@@ -106,7 +106,7 @@ func ensureLocalArcHostsAliases(pubHost string) error {
 	}
 	// "remotehost" should point at the server's WG/LAN address.
 	return ensureLocalHostsMappings(map[string]string{
-		"remotehost":      wgServerIP,
-		"pub.remotehost":  pubIP,
+		"remotehost":     wgServerIP,
+		"pub.remotehost": pubIP,
 	})
 }

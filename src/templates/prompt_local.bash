@@ -85,10 +85,40 @@ __arc_cwd() {
 }
 
 __arc_vpn_icon() {
-	local __arc_now __arc_hs
+	local __arc_now __arc_hs __arc_recent=0 __arc_ping_ok=0
 	__arc_now="$(date +%s)"
-	__arc_hs="$(wg show wg0 latest-handshakes 2>/dev/null | awk 'NF>=2 && $2>m{m=$2} END{print m+0}')"
-	if (( __arc_hs > 0 && (__arc_now - __arc_hs) <= 5 )) && ip -o route get 10.0.0.1 2>/dev/null | grep -Eq 'dev[[:space:]]+wg0([[:space:]]|$)'; then
+
+	# Recompute at most every 3 seconds to avoid running checks on every prompt render.
+	if (( __arc_now - ${__ARC_VPN_CACHE_TS:-0} >= 3 )); then
+		__ARC_VPN_CACHE_TS="$__arc_now"
+		__ARC_VPN_CACHE_ON=0
+
+		# Hard requirement: route to the server must go via wg0.
+		if ip -o route get 10.0.0.1 2>/dev/null | grep -Eq 'dev[[:space:]]+wg0([[:space:]]|$)'; then
+			# Fast signal: recent handshake.
+			__arc_hs="$(wg show wg0 latest-handshakes 2>/dev/null | awk 'NF>=2 && $2>m{m=$2} END{print m+0}')"
+			if (( __arc_hs > 0 && (__arc_now - __arc_hs) <= 180 )); then
+				__arc_recent=1
+			fi
+
+			# Fallback signal: quick connectivity check.
+			if command -v timeout >/dev/null 2>&1; then
+				if timeout 0.35 ping -n -c1 -W1 10.0.0.1 >/dev/null 2>&1; then
+					__arc_ping_ok=1
+				fi
+			else
+				if ping -n -c1 -W1 10.0.0.1 >/dev/null 2>&1; then
+					__arc_ping_ok=1
+				fi
+			fi
+
+			if (( __arc_recent == 1 || __arc_ping_ok == 1 )); then
+				__ARC_VPN_CACHE_ON=1
+			fi
+		fi
+	fi
+
+	if (( ${__ARC_VPN_CACHE_ON:-0} == 1 )); then
 		printf '󰓢 '
 	fi
 }
