@@ -1,0 +1,24 @@
+set -eu
+if ! id -u {{.ArcUser}} >/dev/null 2>&1; then
+	if command -v useradd >/dev/null 2>&1; then
+		useradd -m -s /bin/bash {{.ArcUser}}
+	elif command -v adduser >/dev/null 2>&1; then
+		adduser --disabled-password --gecos '' {{.ArcUser}}
+	else
+		echo 'cannot create user: useradd/adduser missing' >&2
+		exit 1
+	fi
+fi
+if command -v usermod >/dev/null 2>&1; then
+	usermod -s /bin/bash {{.ArcUser}} >/dev/null 2>&1 || true
+elif command -v chsh >/dev/null 2>&1; then
+	chsh -s /bin/bash {{.ArcUser}} >/dev/null 2>&1 || true
+fi
+home="$(getent passwd {{.ArcUser}} | cut -d: -f6)"
+if [ -z "$home" ]; then
+	echo 'cannot resolve arc home dir (getent passwd)' >&2
+	exit 1
+fi
+install -d -m 0755 -o {{.ArcUser}} -g {{.ArcUser}} "$home"
+chown {{.ArcUser}}:{{.ArcUser}} "$home" || true
+chmod go-w "$home" || true

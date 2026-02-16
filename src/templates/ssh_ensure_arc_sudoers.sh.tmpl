@@ -1,0 +1,13 @@
+set -eu
+install -d -m 0750 /etc/sudoers.d
+tmp=/etc/sudoers.d/.90-arc.tmp
+trap 'rm -f "$tmp"' EXIT
+printf '%s\n' '{{.ArcUser}} ALL=(ALL) NOPASSWD:ALL' > "$tmp"
+chmod 0440 "$tmp"
+if command -v visudo >/dev/null 2>&1; then
+	visudo -cf "$tmp" >/dev/null
+else
+	echo 'visudo is required' >&2
+	exit 1
+fi
+mv "$tmp" /etc/sudoers.d/90-arc

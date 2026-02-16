@@ -1,0 +1,13 @@
+set -eu
+home="$(getent passwd {{.ArcUser}} | cut -d: -f6)"
+if [ -z "$home" ]; then
+	echo 'cannot resolve arc home dir (getent passwd)' >&2
+	exit 1
+fi
+chown {{.ArcUser}}:{{.ArcUser}} "$home" || true
+chmod go-w "$home" || true
+install -d -m 700 -o {{.ArcUser}} -g {{.ArcUser}} "$home/.ssh"
+touch "$home/.ssh/authorized_keys"
+chown {{.ArcUser}}:{{.ArcUser}} "$home/.ssh/authorized_keys"
+chmod 600 "$home/.ssh/authorized_keys"
+grep -qxF {{.QuotedKey}} "$home/.ssh/authorized_keys" || echo {{.QuotedKey}} >> "$home/.ssh/authorized_keys"

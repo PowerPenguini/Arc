@@ -1,0 +1,9 @@
+set -eu
+home="$(getent passwd {{.ArcUser}} | cut -d: -f6)"
+if [ -z "$home" ]; then
+	echo 'cannot resolve arc home dir (getent passwd)' >&2
+	exit 1
+fi
+touch "$home/.hushlogin"
+chown {{.ArcUser}}:{{.ArcUser}} "$home/.hushlogin"
+chmod 600 "$home/.hushlogin"

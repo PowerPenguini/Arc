@@ -1,0 +1,54 @@
+set -eu
+
+rc="$HOME/.bashrc"
+profile="$HOME/.bash_profile"
+tmp="$HOME/.bashrc.arc.tmp"
+
+start='### ARC_PROMPT_START'
+end='### ARC_PROMPT_END'
+
+touch "$rc"
+
+awk -v s="$start" -v e="$end" '
+BEGIN{skip=0}
+$0==s{skip=1; next}
+$0==e{skip=0; next}
+skip==0{print}
+' "$rc" > "$tmp"
+
+cat >> "$tmp" <<'EOF_REMOTE'
+{{.ArcPromptBlockRemote}}
+EOF_REMOTE
+
+mv "$tmp" "$rc"
+
+touch "$profile"
+tmp_profile="$HOME/.bash_profile.arc.tmp"
+awk '
+{
+	if ($0 ~ /(^|[;[:space:]])(source|\.)[[:space:]]+~\/?\.bashrc([[:space:];]|$)/) next
+	print
+}
+' "$profile" > "$tmp_profile"
+printf '%s\n' '[[ -f ~/.bashrc ]] && . ~/.bashrc' >> "$tmp_profile"
+mv "$tmp_profile" "$profile"
+
+# Detect any output from bash startup. This is important for clean SSH sessions and automation.
+# We only attempt to silence user dotfiles; system-level output (e.g. /etc/profile) is out of scope.
+out_rc="$(BASH_ENV="$rc" bash -c 'true' 2>&1 || true)"
+out_login="$(bash -lc 'true' 2>&1 || true)"
+noise="$(printf '%s' "$out_rc$out_login" | tr -d ' \t\r\n')"
+if [ -n "$noise" ]; then
+	ts="$(date +%s)"
+	[ -f "$rc" ] && cp -f "$rc" "$rc.arc.bak.$ts" || true
+	[ -f "$profile" ] && cp -f "$profile" "$profile.arc.bak.$ts" || true
+
+	# Rewrite as minimal, quiet files owned by the arc user.
+	cat > "$rc" <<'EOF_REMOTE'
+{{.ArcPromptBlockRemote}}
+EOF_REMOTE
+	cat > "$profile" <<'EOF_PROFILE'
+[[ -f ~/.bashrc ]] && . ~/.bashrc
+EOF_PROFILE
+	chmod 600 "$rc" "$profile" || true
+fi
