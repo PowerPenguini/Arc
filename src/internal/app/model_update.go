@@ -11,6 +11,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.w, m.h = msg.Width, msg.Height
+		m.clampLogScroll()
 		return m, nil
 	case localSudoCheckMsg:
 		m.localSudoChecked = true
@@ -40,6 +41,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.err = fmt.Sprintf("Step %d failed: %v", msg.index+1, msg.err)
 			m.working = false
 			m.submitted = false
+			m.clampLogScroll()
 			return m, nil
 		}
 
@@ -57,6 +59,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		m.steps[msg.index].State = stepDone
+		m.clampLogScroll()
 		next := msg.index + 1
 		if next >= len(m.steps) {
 			m.working = false
@@ -131,13 +134,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case phaseLog:
 			if me.Button == tea.MouseButtonWheelUp {
 				m.logScroll += 2
+				m.clampLogScroll()
 				return m, nil
 			}
 			if me.Button == tea.MouseButtonWheelDown {
 				m.logScroll -= 2
-				if m.logScroll < 0 {
-					m.logScroll = 0
-				}
+				m.clampLogScroll()
 				return m, nil
 			}
 			if m.submitted && m.err == "" && !m.working {
@@ -185,21 +187,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch k {
 			case "up", "k":
 				m.logScroll++
+				m.clampLogScroll()
 				return m, nil
 			case "down", "j":
 				m.logScroll--
-				if m.logScroll < 0 {
-					m.logScroll = 0
-				}
+				m.clampLogScroll()
 				return m, nil
 			case "pgup":
 				m.logScroll += 6
+				m.clampLogScroll()
 				return m, nil
 			case "pgdown":
 				m.logScroll -= 6
-				if m.logScroll < 0 {
-					m.logScroll = 0
-				}
+				m.clampLogScroll()
 				return m, nil
 			case "end":
 				m.logScroll = 0

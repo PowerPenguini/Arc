@@ -218,6 +218,18 @@ fi
 			return fmt.Errorf("tunnel verification failed (ping %s): %v\n\nauto-sync error: %v\n\nlocal wg diag:\n%s\n\nremote wg diag:\n%s", wgServerIP, err, syncErr, localDiag, remoteDiag)
 		}
 		return fmt.Errorf("tunnel verification failed (ping %s): %v\n\nlocal wg diag:\n%s\n\nremote wg diag:\n%s", wgServerIP, err, localDiag, remoteDiag)
+	case 10:
+		return verifyRemoteArcIdentity(ctx)
+	case 11:
+		return installRemoteNFS(ctx)
+	case 12:
+		return configureRemoteArcNFS(ctx)
+	case 13:
+		return installLocalNFSClient()
+	case 14:
+		return configureLocalArcAutomount()
+	case 15:
+		return verifyLocalArcNFSMount()
 	default:
 		return fmt.Errorf("unknown infra step index: %d", index)
 	}

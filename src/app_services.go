@@ -222,6 +222,54 @@ func (runtimeServices) RunSetupStep(req app.SetupStepRequest) (app.SetupStepResu
 		appWG := toAppWG(wg)
 		res.WG = &appWG
 		return res, nil
+	case 20:
+		ctx := infraRunContext{Addr: req.Addr, Host: req.Host, WG: wg}
+		if err := runInfraStep(ctx, 10); err != nil {
+			return res, err
+		}
+		appWG := toAppWG(wg)
+		res.WG = &appWG
+		return res, nil
+	case 21:
+		ctx := infraRunContext{Addr: req.Addr, Host: req.Host, WG: wg}
+		if err := runInfraStep(ctx, 11); err != nil {
+			return res, err
+		}
+		appWG := toAppWG(wg)
+		res.WG = &appWG
+		return res, nil
+	case 22:
+		ctx := infraRunContext{Addr: req.Addr, Host: req.Host, WG: wg}
+		if err := runInfraStep(ctx, 12); err != nil {
+			return res, err
+		}
+		appWG := toAppWG(wg)
+		res.WG = &appWG
+		return res, nil
+	case 23:
+		ctx := infraRunContext{Addr: req.Addr, Host: req.Host, WG: wg}
+		if err := runInfraStep(ctx, 13); err != nil {
+			return res, err
+		}
+		appWG := toAppWG(wg)
+		res.WG = &appWG
+		return res, nil
+	case 24:
+		ctx := infraRunContext{Addr: req.Addr, Host: req.Host, WG: wg}
+		if err := runInfraStep(ctx, 14); err != nil {
+			return res, err
+		}
+		appWG := toAppWG(wg)
+		res.WG = &appWG
+		return res, nil
+	case 25:
+		ctx := infraRunContext{Addr: req.Addr, Host: req.Host, WG: wg}
+		if err := runInfraStep(ctx, 15); err != nil {
+			return res, err
+		}
+		appWG := toAppWG(wg)
+		res.WG = &appWG
+		return res, nil
 
 	default:
 		return res, fmt.Errorf("unknown step index: %d", req.Index)
