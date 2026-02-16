@@ -10,6 +10,8 @@ sw() {
 
 __arc_fgc() { printf '\[\e[38;2;%s;%s;%sm\]' "$1" "$2" "$3"; }
 __arc_bgc() { printf '\[\e[48;2;%s;%s;%sm\]' "$1" "$2" "$3"; }
+__arc_fgc8() { printf '\[\e[3%sm\]' "$1"; }
+__arc_bgc8() { printf '\[\e[4%sm\]' "$1"; }
 __arc_rst='\[\e[0m\]'
 
 __ARC_BG0="$(__arc_bgc 0 0 0)"          # black
@@ -23,6 +25,10 @@ __ARC_CWD_BG="$(__arc_bgc 42 42 42)"     # 2A2A2A (brighter for contrast)
 __ARC_GIT_BG="$(__arc_bgc 28 28 28)"     # 1C1C1C (distinct from cwd)
 __ARC_ERR_BG="$(__arc_bgc 255 77 77)"    # FF4D4D
 __ARC_GLOBE_BG="$(__arc_bgc 182 214 0)"  # B6D600 (darker lime)
+
+__arc_in_screen() {
+	[[ "${TERM-}" == screen* || -n "${STY-}" ]]
+}
 
 __arc_icon_folder() { printf ''; }
 __arc_icon_branch() { printf ''; }
@@ -65,6 +71,11 @@ __arc_vpn_icon() {
 
 __arc_update_ps1() {
 	local last=$?
+	if __arc_in_screen; then
+		__arc_update_ps1_screen "$last"
+		return
+	fi
+
 	local sep="$(__arc_sep)"
 	local folder="$(__arc_icon_folder)"
 	local branch_icon="$(__arc_icon_branch)"
@@ -86,6 +97,32 @@ __arc_update_ps1() {
 	fi
 
 	PS1="${ps} ${__ARC_LIME}❯${__arc_rst} "
+}
+
+__arc_update_ps1_screen() {
+	local last="$1"
+	local g="$(__arc_git)"
+	local cwd="$(__arc_cwd)"
+
+	local c_ok="$(__arc_fgc8 2)"   # green
+	local c_warn="$(__arc_fgc8 3)" # yellow
+	local c_err="$(__arc_fgc8 1)"  # red
+	local c_dim="$(__arc_fgc8 7)"  # white/gray
+	local c_rst="$__arc_rst"
+	local vpn=""
+	if [[ -n "$(__arc_vpn_icon)" ]]; then
+		vpn="vpn "
+	fi
+
+	local ps=""
+	if (( last != 0 )); then
+		ps+="${c_err}[${last}]${c_rst} "
+	fi
+	ps+="${c_ok}${vpn}arc${c_rst} ${c_dim}${cwd}${c_rst}"
+	if [[ -n "$g" ]]; then
+		ps+=" ${c_warn}(git:${g})${c_rst}"
+	fi
+	PS1="${ps} ${c_ok}>${c_rst} "
 }
 
 case ";$PROMPT_COMMAND;" in
