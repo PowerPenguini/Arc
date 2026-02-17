@@ -4,8 +4,8 @@ import "testing"
 
 func TestDefaultSetupSteps_OrderAndCount(t *testing.T) {
 	steps := DefaultSetupSteps()
-	if len(steps) != 27 {
-		t.Fatalf("expected 27 setup steps, got %d", len(steps))
+	if len(steps) != 31 {
+		t.Fatalf("expected 31 setup steps, got %d", len(steps))
 	}
 	if steps[0].Label != "Server: detect privileged mode" {
 		t.Fatalf("unexpected first step: %q", steps[0].Label)
@@ -16,19 +16,34 @@ func TestDefaultSetupSteps_OrderAndCount(t *testing.T) {
 	if steps[5].Label != "Server: install ARC tmux config" {
 		t.Fatalf("missing tmux config step: %q", steps[5].Label)
 	}
-	if steps[11].Label != "Local: add hosts aliases" {
-		t.Fatalf("unexpected local phase start: %q", steps[11].Label)
+	if steps[4].Label != "Server: install ARC zsh prompt" {
+		t.Fatalf("missing server zsh prompt step: %q", steps[4].Label)
 	}
-	if steps[13].Label != "Local: install ARC local prompt" {
-		t.Fatalf("missing local prompt step: %q", steps[13].Label)
+	if steps[6].Label != "Server: install zsh" {
+		t.Fatalf("missing server zsh install step: %q", steps[6].Label)
 	}
-	if steps[18].Label != "Verify: add arc authorized_keys" {
-		t.Fatalf("unexpected verification phase start: %q", steps[18].Label)
+	if steps[7].Label != "Server: set zsh as default shell for arc" {
+		t.Fatalf("missing server zsh default shell step: %q", steps[7].Label)
 	}
-	if steps[21].Label != "Server: resolve arc UID/GID for NFS squash" {
-		t.Fatalf("missing arc UID/GID squash step: %q", steps[21].Label)
+	if steps[13].Label != "Local: add hosts aliases" {
+		t.Fatalf("unexpected local phase start: %q", steps[13].Label)
 	}
-	if steps[25].Label != "Local: configure /home/arc automount" {
-		t.Fatalf("missing local NFS automount step: %q", steps[25].Label)
+	if steps[15].Label != "Local: install ARC local prompt" {
+		t.Fatalf("missing local prompt step: %q", steps[15].Label)
+	}
+	if steps[16].Label != "Local: install zsh" {
+		t.Fatalf("missing local zsh install step: %q", steps[16].Label)
+	}
+	if steps[17].Label != "Local: set zsh as default shell" {
+		t.Fatalf("missing local zsh default shell step: %q", steps[17].Label)
+	}
+	if steps[22].Label != "Verify: add arc authorized_keys" {
+		t.Fatalf("unexpected verification phase start: %q", steps[22].Label)
+	}
+	if steps[25].Label != "Server: resolve arc UID/GID for NFS squash" {
+		t.Fatalf("missing arc UID/GID squash step: %q", steps[25].Label)
+	}
+	if steps[29].Label != "Local: configure /home/arc automount" {
+		t.Fatalf("missing local NFS automount step: %q", steps[29].Label)
 	}
 }

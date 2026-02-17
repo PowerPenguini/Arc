@@ -1,0 +1,37 @@
+set -eu
+
+rc="$HOME/.zshrc"
+tmp="$HOME/.zshrc.arc.tmp"
+
+start='### ARC_PROMPT_START'
+end='### ARC_PROMPT_END'
+
+touch "$rc"
+
+awk -v s="$start" -v e="$end" '
+BEGIN{skip=0}
+$0==s{skip=1; next}
+$0==e{skip=0; next}
+skip==0{print}
+' "$rc" > "$tmp"
+
+cat >> "$tmp" <<'EOF_REMOTE'
+{{.ArcPromptBlockRemote}}
+EOF_REMOTE
+
+mv "$tmp" "$rc"
+chmod 600 "$rc" || true
+
+# Detect any output from zsh startup when zsh is available.
+if command -v zsh >/dev/null 2>&1; then
+	out_interactive="$(zsh -ic 'true' 2>&1 || true)"
+	noise="$(printf '%s' "$out_interactive" | tr -d ' \t\r\n')"
+	if [ -n "$noise" ]; then
+		ts="$(date +%s)"
+		[ -f "$rc" ] && cp -f "$rc" "$rc.arc.bak.$ts" || true
+		cat > "$rc" <<'EOF_REMOTE'
+{{.ArcPromptBlockRemote}}
+EOF_REMOTE
+		chmod 600 "$rc" || true
+	fi
+fi

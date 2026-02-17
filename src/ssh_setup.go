@@ -170,15 +170,15 @@ func dialArcWithKey(addr string) (*ssh.Client, error) {
 	return client, nil
 }
 
-func ensureArcBashPrompt(addr string) error {
+func ensureArcZshPrompt(addr string) error {
 	client, err := dialArcWithKey(addr)
 	if err != nil {
 		return fmt.Errorf("cannot connect as %s: %w", arcUser, err)
 	}
 	defer client.Close()
 
-	// Install/replace a dedicated ARC prompt block in ~/.bashrc and ensure ~/.bash_profile sources it.
-	script, err := renderTemplateFile("templates/ssh_ensure_arc_bash_prompt.sh.tmpl", map[string]string{
+	// Install/replace a dedicated ARC prompt block in ~/.zshrc.
+	script, err := renderTemplateFile("templates/ssh_ensure_arc_zsh_prompt.sh.tmpl", map[string]string{
 		"ArcPromptBlockRemote": arcPromptBlockRemote,
 	})
 	if err != nil {

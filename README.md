@@ -21,7 +21,7 @@ ARC is a seamless server-client workflow tool where the local machine is treated
   - `sl` lists tmux sessions on the host,
   - `x` kills current tmux session, `x <name>` kills named session.
 
-- Automatic handoff on local Bash start:
+- Automatic handoff on local Zsh start:
   - on first interactive local shell startup, ARC attempts to auto-connect to the remote `ARC` shell,
   - connection order: `arc@remotehost` -> `arc@pub.remotehost`.
 
@@ -38,7 +38,7 @@ ARC is a seamless server-client workflow tool where the local machine is treated
   - setup includes NFS verification step.
 
 - Prompt integration:
-  - dedicated ARC prompt block is managed for local and remote Bash environments,
+  - dedicated ARC prompt block is managed for local and remote Zsh environments,
   - remote prompt shows active session name in a top bar,
   - VPN-aware indicators are included in prompt logic.
 

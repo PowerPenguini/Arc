@@ -22,6 +22,32 @@ func runInfraStep(ctx infraRunContext, index int) error {
 			return err
 		}
 		defer client.Close()
+		if _, err := runRemoteCommand(client, "sudo -n apt-get update", false, ""); err != nil {
+			return err
+		}
+		_, err = runRemoteCommand(client, "sudo -n apt-get install -y zsh", false, "")
+		return err
+	case 1:
+		client, err := dialArcWithKey(ctx.Addr)
+		if err != nil {
+			return err
+		}
+		defer client.Close()
+		script := fmt.Sprintf(`set -eu
+zsh_bin="$(command -v zsh || true)"
+[ -n "$zsh_bin" ] || { echo "zsh not found"; exit 1; }
+current_shell="$(getent passwd %s | cut -d: -f7)"
+[ "$current_shell" = "$zsh_bin" ] && exit 0
+sudo -n chsh -s "$zsh_bin" %s || sudo -n usermod -s "$zsh_bin" %s
+`, arcUser, arcUser, arcUser)
+		_, err = runRemoteCommand(client, script, false, "")
+		return err
+	case 2:
+		client, err := dialArcWithKey(ctx.Addr)
+		if err != nil {
+			return err
+		}
+		defer client.Close()
 		out, err := runRemoteCommand(client, "cat /etc/os-release", false, "")
 		if err != nil {
 			return err
@@ -31,7 +57,7 @@ func runInfraStep(ctx infraRunContext, index int) error {
 			return fmt.Errorf("unsupported remote OS ID=%q (supported: ubuntu, debian)", id)
 		}
 		return nil
-	case 1:
+	case 3:
 		client, err := dialArcWithKey(ctx.Addr)
 		if err != nil {
 			return err
@@ -50,7 +76,7 @@ func runInfraStep(ctx infraRunContext, index int) error {
 		}
 		id := strings.TrimSpace(parseOSRelease(out)["ID"])
 		return ensureWireGuardKernelRemote(client, id)
-	case 2:
+	case 4:
 		client, err := dialArcWithKey(ctx.Addr)
 		if err != nil {
 			return err
@@ -76,7 +102,7 @@ func runInfraStep(ctx infraRunContext, index int) error {
 		cmd := "sudo -n sh -lc " + shSingleQuote(script)
 		_, err = runRemoteCommand(client, cmd, false, "")
 		return err
-	case 3:
+	case 5:
 		client, err := dialArcWithKey(ctx.Addr)
 		if err != nil {
 			return err
@@ -91,7 +117,7 @@ fi
 `, wgPort)
 		_, err = runRemoteCommand(client, script, false, "")
 		return err
-	case 4:
+	case 6:
 		client, err := dialArcWithKey(ctx.Addr)
 		if err != nil {
 			return err
@@ -101,7 +127,39 @@ fi
 		cmd := fmt.Sprintf("sudo -n systemctl enable wg-quick@%s && sudo -n systemctl restart wg-quick@%s && sudo -n systemctl is-active --quiet wg-quick@%s", wgInterface, wgInterface, wgInterface)
 		_, err = runRemoteCommand(client, cmd, false, "")
 		return err
-	case 5:
+	case 7:
+		id, err := localOSID()
+		if err != nil {
+			return err
+		}
+		switch id {
+		case "ubuntu", "debian":
+			if _, err := execLocal("sudo", "-n", "apt-get", "update"); err != nil {
+				return err
+			}
+			_, err = execLocal("sudo", "-n", "apt-get", "install", "-y", "zsh")
+			return err
+		case "arch", "manjaro":
+			_, err := execLocal("sudo", "-n", "pacman", "-Sy", "--noconfirm", "zsh")
+			return err
+		default:
+			return fmt.Errorf("unsupported local OS ID=%q (supported: ubuntu, debian, arch, manjaro)", id)
+		}
+	case 8:
+		targetUser := strings.TrimSpace(os.Getenv("USER"))
+		if targetUser == "" {
+			return fmt.Errorf("cannot resolve local username")
+		}
+		script := fmt.Sprintf(`set -eu
+zsh_bin="$(command -v zsh || true)"
+[ -n "$zsh_bin" ] || { echo "zsh not found"; exit 1; }
+current_shell="$(getent passwd %s | cut -d: -f7)"
+[ "$current_shell" = "$zsh_bin" ] && exit 0
+sudo -n chsh -s "$zsh_bin" %s || sudo -n usermod -s "$zsh_bin" %s
+`, shSingleQuote(targetUser), shSingleQuote(targetUser), shSingleQuote(targetUser))
+		_, err := execLocal("sh", "-lc", script)
+		return err
+	case 9:
 		id, err := localOSID()
 		if err != nil {
 			return err
@@ -110,7 +168,7 @@ fi
 			return fmt.Errorf("unsupported local OS ID=%q (supported: ubuntu, debian, arch, manjaro)", id)
 		}
 		return nil
-	case 6:
+	case 10:
 		id, err := localOSID()
 		if err != nil {
 			return err
@@ -134,7 +192,7 @@ fi
 		default:
 			return fmt.Errorf("unsupported local OS ID=%q", id)
 		}
-	case 7:
+	case 11:
 		home, err := os.UserHomeDir()
 		if err != nil || home == "" {
 			return fmt.Errorf("cannot resolve home dir")
@@ -170,7 +228,7 @@ fi
 		}
 		_ = os.Remove(tmp)
 		return nil
-	case 8:
+	case 12:
 		if _, err := execLocal("sudo", "-n", "systemctl", "enable", "wg-quick@"+wgInterface); err != nil {
 			return err
 		}
@@ -198,7 +256,7 @@ fi
 			return err
 		}
 		return nil
-	case 9:
+	case 13:
 		_, err := execLocal("ping", "-c", "1", "-W", "2", wgServerIP)
 		if err == nil {
 			return nil
@@ -218,17 +276,17 @@ fi
 			return fmt.Errorf("tunnel verification failed (ping %s): %v\n\nauto-sync error: %v\n\nlocal wg diag:\n%s\n\nremote wg diag:\n%s", wgServerIP, err, syncErr, localDiag, remoteDiag)
 		}
 		return fmt.Errorf("tunnel verification failed (ping %s): %v\n\nlocal wg diag:\n%s\n\nremote wg diag:\n%s", wgServerIP, err, localDiag, remoteDiag)
-	case 10:
-		return verifyRemoteArcIdentity(ctx)
-	case 11:
-		return installRemoteNFS(ctx)
-	case 12:
-		return configureRemoteArcNFS(ctx)
-	case 13:
-		return installLocalNFSClient()
 	case 14:
-		return configureLocalArcAutomount()
+		return verifyRemoteArcIdentity(ctx)
 	case 15:
+		return installRemoteNFS(ctx)
+	case 16:
+		return configureRemoteArcNFS(ctx)
+	case 17:
+		return installLocalNFSClient()
+	case 18:
+		return configureLocalArcAutomount()
+	case 19:
 		return verifyLocalArcNFSMount()
 	default:
 		return fmt.Errorf("unknown infra step index: %d", index)

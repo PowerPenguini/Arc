@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 )
 
 const (
@@ -14,8 +13,8 @@ const (
 )
 
 var (
-	arcPromptBlockRemote = mustTemplateFile("templates/prompt_remote.bash")
-	arcPromptBlockLocal  = mustTemplateFile("templates/prompt_local.bash")
+	arcPromptBlockRemote = mustTemplateFile("templates/prompt_remote.zsh")
+	arcPromptBlockLocal  = mustTemplateFile("templates/prompt_local.zsh")
 	arcTmuxBlockRemote   = mustTemplateFile("templates/tmux_remote.conf")
 )
 
@@ -64,28 +63,7 @@ func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
 	return os.Rename(tmpName, path)
 }
 
-func ensureProfileSourcesBashrc(profilePath string) error {
-	b, err := os.ReadFile(profilePath)
-	if err != nil && !os.IsNotExist(err) {
-		return err
-	}
-	if os.IsNotExist(err) {
-		b = nil
-	}
-
-	re := regexp.MustCompile(`(?m)(^|[; \t])(\.|source)[ \t]+~/?\.bashrc([ \t;]|$)`)
-	if re.Find(b) != nil {
-		return nil
-	}
-
-	if len(b) > 0 && b[len(b)-1] != '\n' {
-		b = append(b, '\n')
-	}
-	b = append(b, []byte("[[ -f ~/.bashrc ]] && . ~/.bashrc\n")...)
-	return atomicWriteFile(profilePath, b, 0o600)
-}
-
-func ensureArcPromptInBashrc(rcPath string, promptBlock string) error {
+func ensureArcPromptInZshrc(rcPath string, promptBlock string) error {
 	rcb, err := os.ReadFile(rcPath)
 	if err != nil && !os.IsNotExist(err) {
 		return err
@@ -108,18 +86,14 @@ func ensureArcPromptInBashrc(rcPath string, promptBlock string) error {
 	return atomicWriteFile(rcPath, rcb, 0o600)
 }
 
-func ensureLocalArcBashPrompt() error {
+func ensureLocalArcZshPrompt() error {
 	home, err := os.UserHomeDir()
 	if err != nil || home == "" {
 		return fmt.Errorf("cannot resolve home dir")
 	}
-	rc := filepath.Join(home, ".bashrc")
-	profile := filepath.Join(home, ".bash_profile")
+	rc := filepath.Join(home, ".zshrc")
 
-	if err := ensureArcPromptInBashrc(rc, arcPromptBlockLocal); err != nil {
-		return err
-	}
-	if err := ensureProfileSourcesBashrc(profile); err != nil {
+	if err := ensureArcPromptInZshrc(rc, arcPromptBlockLocal); err != nil {
 		return err
 	}
 	return nil
