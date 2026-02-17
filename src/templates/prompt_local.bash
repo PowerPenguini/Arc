@@ -4,16 +4,23 @@
 [[ $- != *i* ]] && return
 
 __arc_sw_connect() {
+	local __arc_tmux_session="${1:-arc}"
+	if [[ ! "$__arc_tmux_session" =~ ^[A-Za-z0-9._-]+$ ]]; then
+		printf 'sw: invalid session name %q (allowed: letters, digits, ., _, -)\n' "$__arc_tmux_session" >&2
+		return 2
+	fi
+
 	# Quiet preflight checks to avoid noisy SSH errors on fallback.
 	local __arc_ssh_probe_opts=(-o BatchMode=yes -o ConnectTimeout=2 -o ConnectionAttempts=1 -o StrictHostKeyChecking=accept-new -o LogLevel=ERROR)
 	# Fast dead-link detection for the real session so disconnects don't "hang" for long.
 	local __arc_ssh_run_opts=(-q -o LogLevel=QUIET -o ServerAliveInterval=2 -o ServerAliveCountMax=1 -o TCPKeepAlive=yes)
-	local __arc_ssh_cmd='exec bash -i'
+	local __arc_tmux_term='xterm-256color'
+	local __arc_ssh_cmd="env TERM=${__arc_tmux_term} tmux new-session -A -D -s ${__arc_tmux_session}"
 
 	if ssh "${__arc_ssh_probe_opts[@]}" arc@remotehost true >/dev/null 2>&1; then
 		ssh -t "${__arc_ssh_run_opts[@]}" arc@remotehost "$__arc_ssh_cmd"
 		__arc_ssh_rc=$?
-		# bash -i prints "exit" on shell termination; clear that single line on return.
+		# Clear the extra terminal line left by ssh/tmux detach return.
 		(( __arc_ssh_rc == 0 )) && printf '\r\033[1A\033[2K\r'
 		return $__arc_ssh_rc
 	fi
@@ -26,9 +33,57 @@ __arc_sw_connect() {
 	return 255
 }
 
-# sw: on local, connect to server bash (remotehost, then pub.remotehost fallback).
+# sw: on local, attach/create remote tmux session.
+# Usage:
+#   sw            -> session "arc"
+#   sw <session>  -> named session
 sw() {
-	__arc_sw_connect
+	__arc_sw_connect "$1"
+}
+
+# sl: list remote tmux sessions (same host selection as sw).
+sl() {
+	local __arc_ssh_probe_opts=(-o BatchMode=yes -o ConnectTimeout=2 -o ConnectionAttempts=1 -o StrictHostKeyChecking=accept-new -o LogLevel=ERROR)
+	local __arc_ssh_run_opts=(-q -o LogLevel=QUIET -o ServerAliveInterval=2 -o ServerAliveCountMax=1 -o TCPKeepAlive=yes)
+	local __arc_ls_cmd='env TERM=xterm-256color sh -lc '"'"'tmux ls 2>/dev/null || echo "no tmux sessions"'"'"''
+
+	if ssh "${__arc_ssh_probe_opts[@]}" arc@remotehost true >/dev/null 2>&1; then
+		ssh "${__arc_ssh_run_opts[@]}" arc@remotehost "$__arc_ls_cmd"
+		return $?
+	fi
+	if ssh "${__arc_ssh_probe_opts[@]}" arc@pub.remotehost true >/dev/null 2>&1; then
+		ssh "${__arc_ssh_run_opts[@]}" arc@pub.remotehost "$__arc_ls_cmd"
+		return $?
+	fi
+	printf 'sl: cannot reach remotehost or pub.remotehost\n' >&2
+	return 255
+}
+
+# x: close remote tmux session.
+# Usage:
+#   x            -> kill session "arc"
+#   x <session>  -> kill named session
+x() {
+	local __arc_tmux_session="${1:-arc}"
+	if [[ ! "$__arc_tmux_session" =~ ^[A-Za-z0-9._-]+$ ]]; then
+		printf 'x: invalid session name %q (allowed: letters, digits, ., _, -)\n' "$__arc_tmux_session" >&2
+		return 2
+	fi
+
+	local __arc_ssh_probe_opts=(-o BatchMode=yes -o ConnectTimeout=2 -o ConnectionAttempts=1 -o StrictHostKeyChecking=accept-new -o LogLevel=ERROR)
+	local __arc_ssh_run_opts=(-q -o LogLevel=QUIET -o ServerAliveInterval=2 -o ServerAliveCountMax=1 -o TCPKeepAlive=yes)
+	local __arc_x_cmd="env TERM=xterm-256color sh -lc 'tmux kill-session -t ${__arc_tmux_session} 2>/dev/null || { echo \"x: session not found: ${__arc_tmux_session}\" >&2; exit 1; }'"
+
+	if ssh "${__arc_ssh_probe_opts[@]}" arc@remotehost true >/dev/null 2>&1; then
+		ssh "${__arc_ssh_run_opts[@]}" arc@remotehost "$__arc_x_cmd"
+		return $?
+	fi
+	if ssh "${__arc_ssh_probe_opts[@]}" arc@pub.remotehost true >/dev/null 2>&1; then
+		ssh "${__arc_ssh_run_opts[@]}" arc@pub.remotehost "$__arc_x_cmd"
+		return $?
+	fi
+	printf 'x: cannot reach remotehost or pub.remotehost\n' >&2
+	return 255
 }
 
 # ARC AUTO SSH (local)

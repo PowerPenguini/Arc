@@ -1,0 +1,31 @@
+set -eu
+
+conf="$HOME/.tmux.conf"
+tmp="$HOME/.tmux.conf.arc.tmp"
+
+start='### ARC_TMUX_START'
+end='### ARC_TMUX_END'
+
+touch "$conf"
+
+awk -v s="$start" -v e="$end" '
+BEGIN{skip=0}
+$0==s{skip=1; next}
+$0==e{skip=0; next}
+skip==0{print}
+' "$conf" > "$tmp"
+
+if [ -s "$tmp" ]; then
+	last_char="$(tail -c 1 "$tmp" || true)"
+	if [ "$last_char" != "" ]; then
+		printf '\n' >> "$tmp"
+	fi
+	printf '\n' >> "$tmp"
+fi
+
+cat >> "$tmp" <<'EOF_TMUX'
+{{.ArcTmuxBlockRemote}}
+EOF_TMUX
+
+mv "$tmp" "$conf"
+chmod 600 "$conf" || true

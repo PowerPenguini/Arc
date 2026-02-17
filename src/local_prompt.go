@@ -16,6 +16,7 @@ const (
 var (
 	arcPromptBlockRemote = mustTemplateFile("templates/prompt_remote.bash")
 	arcPromptBlockLocal  = mustTemplateFile("templates/prompt_local.bash")
+	arcTmuxBlockRemote   = mustTemplateFile("templates/tmux_remote.conf")
 )
 
 func stripArcPromptBlock(b []byte) []byte {

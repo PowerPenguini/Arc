@@ -78,6 +78,9 @@ func (runtimeServices) RunSetupStep(req app.SetupStepRequest) (app.SetupStepResu
 		return res, ensureArcBashPrompt(req.Addr)
 
 	case 5:
+		return res, ensureArcTmuxConfig(req.Addr)
+
+	case 6:
 		ctx := infraRunContext{Addr: req.Addr, Host: req.Host, WG: wg}
 		if err := runInfraStep(ctx, 0); err != nil {
 			return res, err
@@ -86,7 +89,7 @@ func (runtimeServices) RunSetupStep(req app.SetupStepRequest) (app.SetupStepResu
 		res.WG = &appWG
 		return res, nil
 
-	case 6:
+	case 7:
 		ctx := infraRunContext{Addr: req.Addr, Host: req.Host, WG: wg}
 		if err := runInfraStep(ctx, 1); err != nil {
 			return res, err
@@ -95,7 +98,7 @@ func (runtimeServices) RunSetupStep(req app.SetupStepRequest) (app.SetupStepResu
 		res.WG = &appWG
 		return res, nil
 
-	case 7:
+	case 8:
 		ctx := infraRunContext{Addr: req.Addr, Host: req.Host, WG: wg}
 		if err := runInfraStep(ctx, 2); err != nil {
 			return res, err
@@ -104,7 +107,7 @@ func (runtimeServices) RunSetupStep(req app.SetupStepRequest) (app.SetupStepResu
 		res.WG = &appWG
 		return res, nil
 
-	case 8:
+	case 9:
 		ctx := infraRunContext{Addr: req.Addr, Host: req.Host, WG: wg}
 		if err := runInfraStep(ctx, 3); err != nil {
 			return res, err
@@ -113,7 +116,7 @@ func (runtimeServices) RunSetupStep(req app.SetupStepRequest) (app.SetupStepResu
 		res.WG = &appWG
 		return res, nil
 
-	case 9:
+	case 10:
 		ctx := infraRunContext{Addr: req.Addr, Host: req.Host, WG: wg}
 		if err := runInfraStep(ctx, 4); err != nil {
 			return res, err
@@ -122,13 +125,13 @@ func (runtimeServices) RunSetupStep(req app.SetupStepRequest) (app.SetupStepResu
 		res.WG = &appWG
 		return res, nil
 
-	case 10:
+	case 11:
 		if err := ensureLocalArcHostsAliases(req.Host); err != nil {
 			return res, err
 		}
 		return res, nil
 
-	case 11:
+	case 12:
 		if err := ensureLocalSSHKeyPair(); err != nil {
 			return res, err
 		}
@@ -142,17 +145,8 @@ func (runtimeServices) RunSetupStep(req app.SetupStepRequest) (app.SetupStepResu
 		res.WG = &appWG
 		return res, nil
 
-	case 12:
-		if err := ensureLocalArcBashPrompt(); err != nil {
-			return res, err
-		}
-		appWG := toAppWG(wg)
-		res.WG = &appWG
-		return res, nil
-
 	case 13:
-		ctx := infraRunContext{Addr: req.Addr, Host: req.Host, WG: wg}
-		if err := runInfraStep(ctx, 5); err != nil {
+		if err := ensureLocalArcBashPrompt(); err != nil {
 			return res, err
 		}
 		appWG := toAppWG(wg)
@@ -161,7 +155,7 @@ func (runtimeServices) RunSetupStep(req app.SetupStepRequest) (app.SetupStepResu
 
 	case 14:
 		ctx := infraRunContext{Addr: req.Addr, Host: req.Host, WG: wg}
-		if err := runInfraStep(ctx, 6); err != nil {
+		if err := runInfraStep(ctx, 5); err != nil {
 			return res, err
 		}
 		appWG := toAppWG(wg)
@@ -170,7 +164,7 @@ func (runtimeServices) RunSetupStep(req app.SetupStepRequest) (app.SetupStepResu
 
 	case 15:
 		ctx := infraRunContext{Addr: req.Addr, Host: req.Host, WG: wg}
-		if err := runInfraStep(ctx, 7); err != nil {
+		if err := runInfraStep(ctx, 6); err != nil {
 			return res, err
 		}
 		appWG := toAppWG(wg)
@@ -179,7 +173,7 @@ func (runtimeServices) RunSetupStep(req app.SetupStepRequest) (app.SetupStepResu
 
 	case 16:
 		ctx := infraRunContext{Addr: req.Addr, Host: req.Host, WG: wg}
-		if err := runInfraStep(ctx, 8); err != nil {
+		if err := runInfraStep(ctx, 7); err != nil {
 			return res, err
 		}
 		appWG := toAppWG(wg)
@@ -187,6 +181,15 @@ func (runtimeServices) RunSetupStep(req app.SetupStepRequest) (app.SetupStepResu
 		return res, nil
 
 	case 17:
+		ctx := infraRunContext{Addr: req.Addr, Host: req.Host, WG: wg}
+		if err := runInfraStep(ctx, 8); err != nil {
+			return res, err
+		}
+		appWG := toAppWG(wg)
+		res.WG = &appWG
+		return res, nil
+
+	case 18:
 		if strings.TrimSpace(req.PubKeyLine) == "" {
 			return res, fmt.Errorf("missing public key line")
 		}
@@ -203,7 +206,7 @@ func (runtimeServices) RunSetupStep(req app.SetupStepRequest) (app.SetupStepResu
 		res.WG = &appWG
 		return res, nil
 
-	case 18:
+	case 19:
 		if err := verifyArcKeyLogin(req.Host, req.Addr); err != nil {
 			return res, err
 		}
@@ -214,7 +217,7 @@ func (runtimeServices) RunSetupStep(req app.SetupStepRequest) (app.SetupStepResu
 		res.WG = &appWG
 		return res, nil
 
-	case 19:
+	case 20:
 		if err := runInfraStep(infraRunContext{Addr: req.Addr, Host: req.Host, WG: wg}, 9); err != nil {
 			return res, err
 		}
@@ -222,7 +225,7 @@ func (runtimeServices) RunSetupStep(req app.SetupStepRequest) (app.SetupStepResu
 		appWG := toAppWG(wg)
 		res.WG = &appWG
 		return res, nil
-	case 20:
+	case 21:
 		ctx := infraRunContext{Addr: req.Addr, Host: req.Host, WG: wg}
 		if err := runInfraStep(ctx, 10); err != nil {
 			return res, err
@@ -230,7 +233,7 @@ func (runtimeServices) RunSetupStep(req app.SetupStepRequest) (app.SetupStepResu
 		appWG := toAppWG(wg)
 		res.WG = &appWG
 		return res, nil
-	case 21:
+	case 22:
 		ctx := infraRunContext{Addr: req.Addr, Host: req.Host, WG: wg}
 		if err := runInfraStep(ctx, 11); err != nil {
 			return res, err
@@ -238,7 +241,7 @@ func (runtimeServices) RunSetupStep(req app.SetupStepRequest) (app.SetupStepResu
 		appWG := toAppWG(wg)
 		res.WG = &appWG
 		return res, nil
-	case 22:
+	case 23:
 		ctx := infraRunContext{Addr: req.Addr, Host: req.Host, WG: wg}
 		if err := runInfraStep(ctx, 12); err != nil {
 			return res, err
@@ -246,7 +249,7 @@ func (runtimeServices) RunSetupStep(req app.SetupStepRequest) (app.SetupStepResu
 		appWG := toAppWG(wg)
 		res.WG = &appWG
 		return res, nil
-	case 23:
+	case 24:
 		ctx := infraRunContext{Addr: req.Addr, Host: req.Host, WG: wg}
 		if err := runInfraStep(ctx, 13); err != nil {
 			return res, err
@@ -254,7 +257,7 @@ func (runtimeServices) RunSetupStep(req app.SetupStepRequest) (app.SetupStepResu
 		appWG := toAppWG(wg)
 		res.WG = &appWG
 		return res, nil
-	case 24:
+	case 25:
 		ctx := infraRunContext{Addr: req.Addr, Host: req.Host, WG: wg}
 		if err := runInfraStep(ctx, 14); err != nil {
 			return res, err
@@ -262,7 +265,7 @@ func (runtimeServices) RunSetupStep(req app.SetupStepRequest) (app.SetupStepResu
 		appWG := toAppWG(wg)
 		res.WG = &appWG
 		return res, nil
-	case 25:
+	case 26:
 		ctx := infraRunContext{Addr: req.Addr, Host: req.Host, WG: wg}
 		if err := runInfraStep(ctx, 15); err != nil {
 			return res, err

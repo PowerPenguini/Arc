@@ -191,6 +191,26 @@ func ensureArcBashPrompt(addr string) error {
 	return nil
 }
 
+func ensureArcTmuxConfig(addr string) error {
+	client, err := dialArcWithKey(addr)
+	if err != nil {
+		return fmt.Errorf("cannot connect as %s: %w", arcUser, err)
+	}
+	defer client.Close()
+
+	script, err := renderTemplateFile("templates/ssh_ensure_arc_tmux_conf.sh.tmpl", map[string]string{
+		"ArcTmuxBlockRemote": arcTmuxBlockRemote,
+	})
+	if err != nil {
+		return err
+	}
+
+	if _, err := runRemoteCommand(client, script, false, ""); err != nil {
+		return fmt.Errorf("install tmux config failed: %w", err)
+	}
+	return nil
+}
+
 func runRemoteCommand(client *ssh.Client, command string, useSudo bool, sudoPassword string) (string, error) {
 	session, err := client.NewSession()
 	if err != nil {

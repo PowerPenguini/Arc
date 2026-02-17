@@ -7,6 +7,7 @@ func DefaultSetupSteps() []Step {
 		{Label: "Server: add arc to sudoers"},
 		{Label: "Server: create ~/.hushlogin for arc"},
 		{Label: "Server: install ARC bash prompt"},
+		{Label: "Server: install ARC tmux config"},
 		{Label: "Server: detect OS"},
 		{Label: "Server: install WireGuard"},
 		{Label: "Server: write wg0.conf"},
