@@ -1,5 +1,3 @@
-# ARC
-
 ![ARC logo](assets/logo.svg)
 
 ARC is a seamless server-client workflow tool where the local machine is treated as a thin client by default.
