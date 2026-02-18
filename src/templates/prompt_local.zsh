@@ -96,6 +96,67 @@ if [[ -z "${ARC_AUTO_SSH_ONCE-}" ]]; then
 	fi
 fi
 
+# ARC custom lightweight UX (no external plugins).
+autoload -Uz compinit 2>/dev/null || true
+if typeset -f compinit >/dev/null 2>&1; then
+	compinit -d "$HOME/.zcompdump" 2>/dev/null || true
+fi
+
+# History search with Up/Down for current prefix.
+bindkey '^[[A' history-beginning-search-backward
+bindkey '^[[B' history-beginning-search-forward
+
+__arc_fancy_refresh() {
+	RBUFFER=""
+	region_highlight=()
+
+	# Show suggestion only when cursor is at end of left buffer.
+	[[ $CURSOR -eq ${#LBUFFER} ]] || return
+	local prefix="$LBUFFER"
+	[[ -n "$prefix" ]] || return
+
+	local h
+	for h in ${(f)"$(fc -lnr 1 2>/dev/null)"}; do
+		[[ "$h" == "$prefix"* ]] || continue
+		[[ "$h" == "$prefix" ]] && continue
+		RBUFFER="${h#$prefix}"
+		local start=${#LBUFFER}
+		local end=$((start + ${#RBUFFER}))
+		region_highlight+=("$start $end fg=244")
+		return
+	done
+}
+
+__arc_fancy_self_insert() { zle .self-insert; __arc_fancy_refresh; }
+__arc_fancy_backward_delete() { zle .backward-delete-char; __arc_fancy_refresh; }
+__arc_fancy_delete_char() { zle .delete-char; __arc_fancy_refresh; }
+__arc_fancy_kill_word() { zle .kill-word; __arc_fancy_refresh; }
+__arc_fancy_backward_kill_word() { zle .backward-kill-word; __arc_fancy_refresh; }
+__arc_fancy_transpose_words() { zle .transpose-words; __arc_fancy_refresh; }
+__arc_fancy_accept_line() { RBUFFER=""; region_highlight=(); zle .accept-line; }
+__arc_fancy_accept_suggestion_or_move() {
+	if [[ -n "$RBUFFER" ]]; then
+		LBUFFER+="$RBUFFER"
+		RBUFFER=""
+		__arc_fancy_refresh
+		return
+	fi
+	zle .forward-char
+}
+__arc_fancy_redisplay() { __arc_fancy_refresh; zle .redisplay; }
+__arc_fancy_line_init() { __arc_fancy_refresh; }
+
+zle -N self-insert __arc_fancy_self_insert
+zle -N backward-delete-char __arc_fancy_backward_delete
+zle -N delete-char __arc_fancy_delete_char
+zle -N kill-word __arc_fancy_kill_word
+zle -N backward-kill-word __arc_fancy_backward_kill_word
+zle -N transpose-words __arc_fancy_transpose_words
+zle -N accept-line __arc_fancy_accept_line
+zle -N redisplay __arc_fancy_redisplay
+zle -N zle-line-init __arc_fancy_line_init
+zle -N forward-char __arc_fancy_accept_suggestion_or_move
+
 __arc_fgc() { printf '%%{\e[38;2;%s;%s;%sm%%}' "$1" "$2" "$3"; }
 __arc_bgc() { printf '%%{\e[48;2;%s;%s;%sm%%}' "$1" "$2" "$3"; }
 __arc_rst() { printf '%%{\033[0m%%}'; }
