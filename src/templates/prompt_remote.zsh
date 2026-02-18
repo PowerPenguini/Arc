@@ -3,6 +3,13 @@
 # Requires a font with powerline/nerd glyphs.
 [[ -o interactive ]] || return
 
+# Colorized file listing and grep output.
+alias ls='ls --color=auto'
+alias ll='ls -lah --color=auto'
+alias la='ls -A --color=auto'
+alias l='ls -CF --color=auto'
+alias grep='grep --color=auto'
+
 # sw: on remote, quickly leave the current SSH session.
 sw() {
 	[[ -n "${SSH_CONNECTION-}" ]] || return 0
@@ -86,6 +93,8 @@ __arc_fancy_refresh() {
 
 	local h
 	for h in ${(f)"$(fc -lnr 1 2>/dev/null)"}; do
+		[[ "$h" == *$'\n'* ]] && continue
+		[[ "$h" == *\\n* ]] && continue
 		[[ "$h" == "$prefix"* ]] || continue
 		[[ "$h" == "$prefix" ]] && continue
 		RBUFFER="${h#$prefix}"
@@ -158,11 +167,14 @@ __arc_session_name() {
 
 __arc_git() {
 	git rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
-	local b dirty
+	local b
 	b="$(git symbolic-ref --quiet --short HEAD 2>/dev/null || git rev-parse --short HEAD 2>/dev/null)" || return 0
-	dirty=""
-	git diff --quiet --ignore-submodules -- 2>/dev/null || dirty="*"
-	printf '%s%s' "$b" "$dirty"
+	printf '%s' "$b"
+}
+
+__arc_git_dirty() {
+	git rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
+	git diff --quiet --ignore-submodules -- 2>/dev/null || printf '󰦒'
 }
 
 __arc_cwd() {
@@ -200,6 +212,7 @@ __arc_update_ps1() {
 	local session_name="$(__arc_session_name)"
 	local ps=""
 	local g="$(__arc_git)"
+	local gd="$(__arc_git_dirty)"
 	local top=""
 	local sep_skew="$(__arc_sep_skew)"
 
@@ -211,13 +224,17 @@ __arc_update_ps1() {
 
 	if [[ -n "$g" ]]; then
 		ps+="${__ARC_CWD_BG}${__ARC_LIME} ${folder}  ${__ARC_TEXT}$(__arc_cwd) ${__ARC_GIT_BG}$(__arc_fgc 42 42 42)${sep}${__ARC_RST}"
-		ps+="${__ARC_GIT_BG}${__ARC_LIME} ${branch_icon} ${__ARC_TEXT}${g} ${__ARC_NBG}$(__arc_fgc 28 28 28)${sep}${__ARC_RST}"
+		if [[ -n "$gd" ]]; then
+			ps+="${__ARC_GIT_BG}${__ARC_LIME} ${branch_icon} ${__ARC_TEXT}${g} ${__ARC_LIME}${gd} ${__ARC_NBG}$(__arc_fgc 28 28 28)${sep}${__ARC_RST}"
+		else
+			ps+="${__ARC_GIT_BG}${__ARC_LIME} ${branch_icon} ${__ARC_TEXT}${g} ${__ARC_NBG}$(__arc_fgc 28 28 28)${sep}${__ARC_RST}"
+		fi
 	else
 		ps+="${__ARC_CWD_BG}${__ARC_LIME} ${folder}  ${__ARC_TEXT}$(__arc_cwd) ${__ARC_NBG}$(__arc_fgc 42 42 42)${sep}${__ARC_RST}"
 	fi
 
 	top+="${__ARC_GIT_BG}${__ARC_LIME} >_ ${__ARC_TEXT}${session_name} ${__ARC_NBG}$(__arc_fgc 28 28 28)${sep_skew}${__ARC_RST}"
-	PROMPT="${top}\n${ps} ${__ARC_LIME}❯${__ARC_RST} "
+	PROMPT="${top}"$'\n'"${ps} ${__ARC_LIME}❯${__ARC_RST} "
 }
 
 setopt prompt_subst

@@ -3,6 +3,13 @@
 # Requires a font with powerline/nerd glyphs.
 [[ -o interactive ]] || return
 
+# Colorized file listing and grep output.
+alias ls='ls --color=auto'
+alias ll='ls -lah --color=auto'
+alias la='ls -A --color=auto'
+alias l='ls -CF --color=auto'
+alias grep='grep --color=auto'
+
 __arc_sw_connect() {
 	local __arc_tmux_session="${1:-arc}"
 	if [[ ! "$__arc_tmux_session" =~ ^[A-Za-z0-9._-]+$ ]]; then
@@ -117,6 +124,8 @@ __arc_fancy_refresh() {
 
 	local h
 	for h in ${(f)"$(fc -lnr 1 2>/dev/null)"}; do
+		[[ "$h" == *$'\n'* ]] && continue
+		[[ "$h" == *\\n* ]] && continue
 		[[ "$h" == "$prefix"* ]] || continue
 		[[ "$h" == "$prefix" ]] && continue
 		RBUFFER="${h#$prefix}"
@@ -182,11 +191,14 @@ __arc_sep() { printf ''; }
 
 __arc_git() {
 	git rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
-	local b dirty
+	local b
 	b="$(git symbolic-ref --quiet --short HEAD 2>/dev/null || git rev-parse --short HEAD 2>/dev/null)" || return 0
-	dirty=""
-	git diff --quiet --ignore-submodules -- 2>/dev/null || dirty="*"
-	printf '%s%s' "$b" "$dirty"
+	printf '%s' "$b"
+}
+
+__arc_git_dirty() {
+	git rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
+	git diff --quiet --ignore-submodules -- 2>/dev/null || printf '󰦒'
 }
 
 __arc_cwd() {
@@ -250,6 +262,7 @@ __arc_update_ps1() {
 	local vpn_icon="$(__arc_vpn_icon)"
 	local ps=""
 	local g="$(__arc_git)"
+	local gd="$(__arc_git_dirty)"
 
 	if (( last != 0 )); then
 		ps+="${__ARC_ERR_BG}${__ARC_TEXT} ✗ ${last} ${__ARC_BG0}${__ARC_ERR}${sep}${__ARC_RST}"
@@ -259,7 +272,11 @@ __arc_update_ps1() {
 
 	if [[ -n "$g" ]]; then
 		ps+="${__ARC_CWD_BG}${__ARC_LIME} ${folder}  ${__ARC_TEXT}$(__arc_cwd) ${__ARC_GIT_BG}$(__arc_fgc 42 42 42)${sep}${__ARC_RST}"
-		ps+="${__ARC_GIT_BG}${__ARC_LIME} ${branch_icon} ${__ARC_TEXT}${g} ${__ARC_NBG}$(__arc_fgc 28 28 28)${sep}${__ARC_RST}"
+		if [[ -n "$gd" ]]; then
+			ps+="${__ARC_GIT_BG}${__ARC_LIME} ${branch_icon} ${__ARC_TEXT}${g} ${__ARC_LIME}${gd} ${__ARC_NBG}$(__arc_fgc 28 28 28)${sep}${__ARC_RST}"
+		else
+			ps+="${__ARC_GIT_BG}${__ARC_LIME} ${branch_icon} ${__ARC_TEXT}${g} ${__ARC_NBG}$(__arc_fgc 28 28 28)${sep}${__ARC_RST}"
+		fi
 	else
 		ps+="${__ARC_CWD_BG}${__ARC_LIME} ${folder}  ${__ARC_TEXT}$(__arc_cwd) ${__ARC_NBG}$(__arc_fgc 42 42 42)${sep}${__ARC_RST}"
 	fi

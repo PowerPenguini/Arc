@@ -70,6 +70,15 @@ func ensureLocalHostsMappings(m map[string]string) error {
 	}
 
 	// Append managed mappings in a stable order.
+	if ip := strings.TrimSpace(m["lh"]); ip != "" {
+		out = append(out, fmt.Sprintf("%s\tlh", ip))
+	}
+	if ip := strings.TrimSpace(m["rh"]); ip != "" {
+		out = append(out, fmt.Sprintf("%s\trh", ip))
+	}
+	if ip := strings.TrimSpace(m["pub.rh"]); ip != "" {
+		out = append(out, fmt.Sprintf("%s\tpub.rh", ip))
+	}
 	if ip := strings.TrimSpace(m["remotehost"]); ip != "" {
 		out = append(out, fmt.Sprintf("%s\tremotehost", ip))
 	}
@@ -106,6 +115,9 @@ func ensureLocalArcHostsAliases(pubHost string) error {
 	}
 	// "remotehost" should point at the server's WG/LAN address.
 	return ensureLocalHostsMappings(map[string]string{
+		"lh":             "127.0.0.1",
+		"rh":             wgServerIP,
+		"pub.rh":         pubIP,
 		"remotehost":     wgServerIP,
 		"pub.remotehost": pubIP,
 	})

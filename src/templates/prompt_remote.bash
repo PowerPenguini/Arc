@@ -97,7 +97,7 @@ __arc_git() {
 	local b dirty
 	b="$(git symbolic-ref --quiet --short HEAD 2>/dev/null || git rev-parse --short HEAD 2>/dev/null)" || return 0
 	dirty=""
-	git diff --quiet --ignore-submodules -- 2>/dev/null || dirty="*"
+	git diff --quiet --ignore-submodules -- 2>/dev/null || dirty="󰦒"
 	printf '%s%s' "$b" "$dirty"
 }
 
