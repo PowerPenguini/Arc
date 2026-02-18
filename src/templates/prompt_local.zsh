@@ -114,21 +114,28 @@ bindkey '^[[A' history-beginning-search-backward
 bindkey '^[[B' history-beginning-search-forward
 
 __arc_fancy_refresh() {
-	RBUFFER=""
+	if [[ -n "${__arc_hint_text:-}" && "$RBUFFER" == "$__arc_hint_text" ]]; then
+		RBUFFER=""
+	fi
 	region_highlight=()
+	__arc_hint_text=""
 
-	# Show suggestion only when cursor is at end of left buffer.
-	[[ $CURSOR -eq ${#LBUFFER} ]] || return
-	local prefix="$LBUFFER"
+	# Never mutate the user's right-side buffer while editing in the middle.
+	[[ $CURSOR -eq ${#BUFFER} ]] || return
+	local prefix="$BUFFER"
 	[[ -n "$prefix" ]] || return
 
 	local h
 	for h in ${(f)"$(fc -lnr 1 2>/dev/null)"}; do
 		[[ "$h" == *$'\n'* ]] && continue
-		[[ "$h" == *\\n* ]] && continue
+		[[ "$h" == *\n* ]] && continue
+		[[ "$h" == *$'\e'* ]] && continue
+		[[ "$h" == *\\* ]] && continue
 		[[ "$h" == "$prefix"* ]] || continue
 		[[ "$h" == "$prefix" ]] && continue
-		RBUFFER="${h#$prefix}"
+		__arc_hint_text="${h#$prefix}"
+		[[ -n "${__arc_hint_text}" ]] || continue
+		RBUFFER="$__arc_hint_text"
 		local start=${#LBUFFER}
 		local end=$((start + ${#RBUFFER}))
 		region_highlight+=("$start $end fg=244")
@@ -142,21 +149,41 @@ __arc_fancy_delete_char() { zle .delete-char; __arc_fancy_refresh; }
 __arc_fancy_kill_word() { zle .kill-word; __arc_fancy_refresh; }
 __arc_fancy_backward_kill_word() { zle .backward-kill-word; __arc_fancy_refresh; }
 __arc_fancy_transpose_words() { zle .transpose-words; __arc_fancy_refresh; }
-__arc_fancy_accept_line() { RBUFFER=""; region_highlight=(); zle .accept-line; }
-__arc_fancy_accept_suggestion_or_move() {
-	if [[ -n "$RBUFFER" ]]; then
-		LBUFFER+="$RBUFFER"
+__arc_fancy_accept_line() {
+	if [[ -n "${__arc_hint_text:-}" && "$RBUFFER" == "$__arc_hint_text" ]]; then
 		RBUFFER=""
+	fi
+	region_highlight=()
+	__arc_hint_text=""
+	zle .accept-line
+}
+__arc_fancy_forward_char() {
+	if [[ -n "${__arc_hint_text:-}" && $CURSOR -eq ${#LBUFFER} ]]; then
+		LBUFFER+="$__arc_hint_text"
+		RBUFFER=""
+		region_highlight=()
+		__arc_hint_text=""
 		__arc_fancy_refresh
 		return
 	fi
 	zle .forward-char
+	__arc_fancy_refresh
+}
+__arc_fancy_backward_char() {
+	if [[ -n "${__arc_hint_text:-}" && "$RBUFFER" == "$__arc_hint_text" ]]; then
+		RBUFFER=""
+		region_highlight=()
+		__arc_hint_text=""
+	fi
+	zle .backward-char
+	__arc_fancy_refresh
 }
 __arc_fancy_redisplay() { __arc_fancy_refresh; zle .redisplay; }
 __arc_fancy_line_init() { __arc_fancy_refresh; }
 
 zle -N self-insert __arc_fancy_self_insert
 zle -N backward-delete-char __arc_fancy_backward_delete
+zle -N backward-char __arc_fancy_backward_char
 zle -N delete-char __arc_fancy_delete_char
 zle -N kill-word __arc_fancy_kill_word
 zle -N backward-kill-word __arc_fancy_backward_kill_word
@@ -164,7 +191,7 @@ zle -N transpose-words __arc_fancy_transpose_words
 zle -N accept-line __arc_fancy_accept_line
 zle -N redisplay __arc_fancy_redisplay
 zle -N zle-line-init __arc_fancy_line_init
-zle -N forward-char __arc_fancy_accept_suggestion_or_move
+zle -N forward-char __arc_fancy_forward_char
 
 __arc_fgc() { printf '%%{\e[38;2;%s;%s;%sm%%}' "$1" "$2" "$3"; }
 __arc_bgc() { printf '%%{\e[48;2;%s;%s;%sm%%}' "$1" "$2" "$3"; }
