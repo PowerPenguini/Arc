@@ -17,6 +17,7 @@ setopt HIST_SAVE_NO_DUPS
 setopt HIST_REDUCE_BLANKS
 setopt HIST_EXPIRE_DUPS_FIRST
 setopt HIST_FIND_NO_DUPS
+setopt NO_HIST_SAVE_BY_COPY
 
 # Colorized file listing and grep output.
 alias ls='ls --color=auto'

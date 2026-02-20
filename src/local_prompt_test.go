@@ -45,6 +45,9 @@ func TestArcPromptBlocks_ContainSharedHistoryConfig(t *testing.T) {
 		if !strings.Contains(block, "setopt EXTENDED_HISTORY") {
 			t.Fatalf("prompt block missing EXTENDED_HISTORY")
 		}
+		if !strings.Contains(block, "setopt NO_HIST_SAVE_BY_COPY") {
+			t.Fatalf("prompt block missing NO_HIST_SAVE_BY_COPY")
+		}
 	}
 }
 
