@@ -32,10 +32,10 @@ func runInfraStep(ctx infraRunContext, index int) error {
 			if _, err := runRemoteCommand(client, "sudo -n apt-get update", false, ""); err != nil {
 				return err
 			}
-			_, err = runRemoteCommand(client, "sudo -n apt-get install -y zsh", false, "")
+			_, err = runRemoteCommand(client, "sudo -n apt-get install -y zsh waypipe libwayland-client0 wayland-protocols", false, "")
 			return err
 		case "arch", "manjaro":
-			_, err := runRemoteCommand(client, "sudo -n pacman -Sy --noconfirm zsh", false, "")
+			_, err := runRemoteCommand(client, "sudo -n pacman -Sy --noconfirm zsh waypipe wayland", false, "")
 			return err
 		default:
 			return fmt.Errorf("unsupported remote OS ID=%q (supported: ubuntu, debian, arch, manjaro)", id)
@@ -159,10 +159,10 @@ fi
 			if _, err := execLocal("sudo", "-n", "apt-get", "update"); err != nil {
 				return err
 			}
-			_, err = execLocal("sudo", "-n", "apt-get", "install", "-y", "zsh")
+			_, err = execLocal("sudo", "-n", "apt-get", "install", "-y", "zsh", "waypipe")
 			return err
 		case "arch", "manjaro":
-			_, err := execLocal("sudo", "-n", "pacman", "-Sy", "--noconfirm", "zsh")
+			_, err := execLocal("sudo", "-n", "pacman", "-Sy", "--noconfirm", "zsh", "waypipe")
 			return err
 		default:
 			return fmt.Errorf("unsupported local OS ID=%q (supported: ubuntu, debian, arch, manjaro)", id)
@@ -312,6 +312,49 @@ sudo -n chsh -s "$zsh_bin" %s || sudo -n usermod -s "$zsh_bin" %s
 		return configureLocalArcAutomount()
 	case 20:
 		return verifyLocalArcNFSMount()
+	case 21:
+		client, err := dialArcWithKey(ctx.Addr)
+		if err != nil {
+			return err
+		}
+		defer client.Close()
+		out, err := runRemoteCommand(client, "cat /etc/os-release", false, "")
+		if err != nil {
+			return err
+		}
+		id := strings.TrimSpace(parseOSRelease(out)["ID"])
+		switch id {
+		case "ubuntu", "debian":
+			if _, err := runRemoteCommand(client, "sudo -n apt-get update", false, ""); err != nil {
+				return err
+			}
+			if _, err := runRemoteCommand(client, "sudo -n apt-get install -y waypipe libwayland-client0 wayland-protocols", false, ""); err != nil {
+				return err
+			}
+		case "arch", "manjaro":
+			if _, err := runRemoteCommand(client, "sudo -n pacman -Sy --noconfirm waypipe wayland", false, ""); err != nil {
+				return err
+			}
+		default:
+			return fmt.Errorf("unsupported remote OS ID=%q (supported: ubuntu, debian, arch, manjaro)", id)
+		}
+		script := `set -eu
+install -d -m 0700 "$HOME/.config/arc"
+install -d -m 0700 "$HOME/.cache/xdg-runtime"
+cat > "$HOME/.config/arc/waypipe.env" <<'EOF'
+# ARC managed: fallback runtime dir for headless servers using waypipe.
+if [ -z "${XDG_RUNTIME_DIR:-}" ] || [ ! -d "${XDG_RUNTIME_DIR:-}" ]; then
+	export XDG_RUNTIME_DIR="$HOME/.cache/xdg-runtime"
+fi
+if [ ! -d "$XDG_RUNTIME_DIR" ]; then
+	mkdir -p "$XDG_RUNTIME_DIR"
+	chmod 700 "$XDG_RUNTIME_DIR" || true
+fi
+EOF
+chmod 600 "$HOME/.config/arc/waypipe.env"
+`
+		_, err = runRemoteCommand(client, script, false, "")
+		return err
 	default:
 		return fmt.Errorf("unknown infra step index: %d", index)
 	}

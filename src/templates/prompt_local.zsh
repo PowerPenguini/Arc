@@ -39,16 +39,35 @@ __arc_sw_connect() {
 	local __arc_ssh_run_opts=(-q -o LogLevel=QUIET -o ServerAliveInterval=2 -o ServerAliveCountMax=1 -o TCPKeepAlive=yes)
 	local __arc_tmux_term='xterm-256color'
 	local __arc_ssh_cmd="env TERM=${__arc_tmux_term} tmux new-session -A -D -s ${__arc_tmux_session}"
+	local __arc_use_waypipe=0
+
+	# Use waypipe automatically when running under Wayland and waypipe is available.
+	if [[ -n "${WAYLAND_DISPLAY-}" ]]; then
+		if command -v waypipe >/dev/null 2>&1; then
+			__arc_use_waypipe=1
+		elif [[ -z "${ARC_WAYPIPE_HINT_ONCE-}" ]]; then
+			ARC_WAYPIPE_HINT_ONCE=1
+			printf 'sw: wayland detected but waypipe is missing; install waypipe locally and on server (plus Wayland runtime on server)\n' >&2
+		fi
+	fi
 
 	if ssh "${__arc_ssh_probe_opts[@]}" arc@remotehost true >/dev/null 2>&1; then
-		ssh -t "${__arc_ssh_run_opts[@]}" arc@remotehost "$__arc_ssh_cmd"
+		if (( __arc_use_waypipe == 1 )); then
+			waypipe --display wayland-0 ssh -t "${__arc_ssh_run_opts[@]}" arc@remotehost "$__arc_ssh_cmd"
+		else
+			ssh -t "${__arc_ssh_run_opts[@]}" arc@remotehost "$__arc_ssh_cmd"
+		fi
 		__arc_ssh_rc=$?
 		# Clear the extra terminal line left by ssh/tmux detach return.
 		(( __arc_ssh_rc == 0 )) && printf '\r\033[1A\033[2K\r'
 		return $__arc_ssh_rc
 	fi
 	if ssh "${__arc_ssh_probe_opts[@]}" arc@pub.remotehost true >/dev/null 2>&1; then
-		ssh -t "${__arc_ssh_run_opts[@]}" arc@pub.remotehost "$__arc_ssh_cmd"
+		if (( __arc_use_waypipe == 1 )); then
+			waypipe --display wayland-0 ssh -t "${__arc_ssh_run_opts[@]}" arc@pub.remotehost "$__arc_ssh_cmd"
+		else
+			ssh -t "${__arc_ssh_run_opts[@]}" arc@pub.remotehost "$__arc_ssh_cmd"
+		fi
 		__arc_ssh_rc=$?
 		(( __arc_ssh_rc == 0 )) && printf '\r\033[1A\033[2K\r'
 		return $__arc_ssh_rc

@@ -4,14 +4,17 @@ import "testing"
 
 func TestDefaultSetupSteps_OrderAndCount(t *testing.T) {
 	steps := DefaultSetupSteps()
-	if len(steps) != 32 {
-		t.Fatalf("expected 32 setup steps, got %d", len(steps))
+	if len(steps) != 33 {
+		t.Fatalf("expected 33 setup steps, got %d", len(steps))
 	}
 	if steps[0].Label != "Server: detect privileged mode" {
 		t.Fatalf("unexpected first step: %q", steps[0].Label)
 	}
-	if steps[len(steps)-1].Label != "Verify: verify /home/arc NFS mount" {
+	if steps[len(steps)-1].Label != "Server: configure waypipe runtime" {
 		t.Fatalf("unexpected last step: %q", steps[len(steps)-1].Label)
+	}
+	if steps[len(steps)-2].Label != "Verify: verify /home/arc NFS mount" {
+		t.Fatalf("unexpected penultimate step: %q", steps[len(steps)-2].Label)
 	}
 	if steps[5].Label != "Server: install ARC tmux config" {
 		t.Fatalf("missing tmux config step: %q", steps[5].Label)

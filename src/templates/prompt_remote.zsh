@@ -3,6 +3,25 @@
 # Requires a font with powerline/nerd glyphs.
 [[ -o interactive ]] || return
 
+if [[ -f "$HOME/.config/arc/waypipe.env" ]]; then
+	. "$HOME/.config/arc/waypipe.env"
+elif [[ -z "${XDG_RUNTIME_DIR-}" || ! -d "$XDG_RUNTIME_DIR" ]]; then
+	export XDG_RUNTIME_DIR="$HOME/.cache/xdg-runtime"
+	mkdir -p "$XDG_RUNTIME_DIR" 2>/dev/null || true
+	chmod 700 "$XDG_RUNTIME_DIR" 2>/dev/null || true
+fi
+
+# Prefer Wayland backend for Chromium/Electron family when connected via waypipe.
+if [[ -n "${WAYLAND_DISPLAY-}" && -z "${DISPLAY-}" ]]; then
+	export OZONE_PLATFORM=wayland
+	export ELECTRON_OZONE_PLATFORM_HINT=wayland
+	export XDG_SESSION_TYPE=wayland
+	case " ${CHROMIUM_FLAGS-} " in
+	*" --ozone-platform=wayland "*) ;;
+	*) export CHROMIUM_FLAGS="${CHROMIUM_FLAGS:+$CHROMIUM_FLAGS }--ozone-platform=wayland" ;;
+	esac
+fi
+
 # Shared history across local/server via NFS.
 HISTFILE=/home/arc/.zsh_history_shared
 HISTSIZE=200000

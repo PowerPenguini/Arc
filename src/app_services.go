@@ -318,6 +318,14 @@ func (runtimeServices) RunSetupStep(req app.SetupStepRequest) (app.SetupStepResu
 		appWG := toAppWG(wg)
 		res.WG = &appWG
 		return res, nil
+	case 32:
+		ctx := infraRunContext{Addr: req.Addr, Host: req.Host, WG: wg}
+		if err := runInfraStep(ctx, 21); err != nil {
+			return res, err
+		}
+		appWG := toAppWG(wg)
+		res.WG = &appWG
+		return res, nil
 
 	default:
 		return res, fmt.Errorf("unknown step index: %d", req.Index)

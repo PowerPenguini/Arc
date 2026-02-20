@@ -51,6 +51,51 @@ func TestArcPromptBlocks_ContainSharedHistoryConfig(t *testing.T) {
 	}
 }
 
+func TestArcPromptBlockLocal_ContainsWaypipeAutoForwarding(t *testing.T) {
+	if !strings.Contains(arcPromptBlockLocal, "WAYLAND_DISPLAY") {
+		t.Fatalf("local prompt block missing WAYLAND_DISPLAY detection")
+	}
+	if !strings.Contains(arcPromptBlockLocal, "command -v waypipe") {
+		t.Fatalf("local prompt block missing waypipe availability check")
+	}
+	if !strings.Contains(arcPromptBlockLocal, "waypipe --display wayland-0 ssh -t") {
+		t.Fatalf("local prompt block missing waypipe ssh invocation")
+	}
+	if !strings.Contains(arcPromptBlockLocal, "--display wayland-0") {
+		t.Fatalf("local prompt block missing fixed wayland-0 display")
+	}
+	if !strings.Contains(arcPromptBlockLocal, "ARC_WAYPIPE_HINT_ONCE") {
+		t.Fatalf("local prompt block missing one-time waypipe hint guard")
+	}
+}
+
+func TestArcPromptBlockRemote_ContainsWaypipeRuntimeSetup(t *testing.T) {
+	if !strings.Contains(arcPromptBlockRemote, "$HOME/.config/arc/waypipe.env") {
+		t.Fatalf("remote prompt block missing waypipe env file integration")
+	}
+	if !strings.Contains(arcPromptBlockRemote, "XDG_RUNTIME_DIR") {
+		t.Fatalf("remote prompt block missing XDG_RUNTIME_DIR fallback")
+	}
+	if !strings.Contains(arcPromptBlockRemote, "OZONE_PLATFORM=wayland") {
+		t.Fatalf("remote prompt block missing Wayland ozone preference")
+	}
+	if !strings.Contains(arcPromptBlockRemote, "CHROMIUM_FLAGS") {
+		t.Fatalf("remote prompt block missing Chromium Wayland flags")
+	}
+}
+
+func TestArcTmuxBlockRemote_ContainsWaylandEnvPropagation(t *testing.T) {
+	if !strings.Contains(arcTmuxBlockRemote, "update-environment") {
+		t.Fatalf("remote tmux block missing update-environment setting")
+	}
+	if !strings.Contains(arcTmuxBlockRemote, "WAYLAND_DISPLAY") {
+		t.Fatalf("remote tmux block missing WAYLAND_DISPLAY propagation")
+	}
+	if !strings.Contains(arcTmuxBlockRemote, "XDG_RUNTIME_DIR") {
+		t.Fatalf("remote tmux block missing XDG_RUNTIME_DIR propagation")
+	}
+}
+
 func TestEnsureLocalArcZshPrompt_Idempotent(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

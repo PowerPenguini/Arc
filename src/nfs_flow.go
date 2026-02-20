@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 )
 
 const (
@@ -267,28 +268,46 @@ func configureLocalArcAutomount() error {
 }
 
 func verifyLocalArcNFSMount() error {
-	if _, err := execLocal("ls", "-la", nfsMountTarget); err != nil {
-		return fmt.Errorf("trigger automount for %s: %w", nfsMountTarget, err)
+	const attempts = 5
+	var lastErr error
+
+	verifyOnce := func() error {
+		if _, err := execLocal("ls", "-la", nfsMountTarget); err != nil {
+			return fmt.Errorf("trigger automount for %s: %w", nfsMountTarget, err)
+		}
+
+		// Validate the real NFS mount (not the autofs trigger layer).
+		out, err := execLocal("findmnt", "-n", "-t", "nfs4", "-o", "SOURCE,TARGET", "-T", nfsMountTarget)
+		if err != nil {
+			diag, _ := execLocal("findmnt", "-n", "-o", "SOURCE,FSTYPE,TARGET", "-T", nfsMountTarget)
+			if strings.TrimSpace(diag) != "" {
+				return fmt.Errorf("nfs4 mount not active for %s (%v); current mount view: %s", nfsMountTarget, err, diag)
+			}
+			return fmt.Errorf("nfs4 mount not active for %s: %w", nfsMountTarget, err)
+		}
+		fields := strings.Fields(strings.TrimSpace(out))
+		if len(fields) < 2 {
+			return fmt.Errorf("unexpected findmnt output for %s: %q", nfsMountTarget, out)
+		}
+		if fields[0] != nfsServerExportSource() {
+			return fmt.Errorf("unexpected NFS source for %s: got %s want %s", nfsMountTarget, fields[0], nfsServerExportSource())
+		}
+		if fields[1] != nfsMountTarget {
+			return fmt.Errorf("unexpected mount target: got %s want %s", fields[1], nfsMountTarget)
+		}
+		return nil
 	}
 
-	// Validate the real NFS mount (not the autofs trigger layer).
-	out, err := execLocal("findmnt", "-n", "-t", "nfs4", "-o", "SOURCE,TARGET", "-T", nfsMountTarget)
-	if err != nil {
-		diag, _ := execLocal("findmnt", "-n", "-o", "SOURCE,FSTYPE,TARGET", "-T", nfsMountTarget)
-		if strings.TrimSpace(diag) != "" {
-			return fmt.Errorf("nfs4 mount not active for %s (%v); current mount view: %s", nfsMountTarget, err, diag)
+	for i := 1; i <= attempts; i++ {
+		if err := verifyOnce(); err == nil {
+			return nil
+		} else {
+			lastErr = err
 		}
-		return fmt.Errorf("nfs4 mount not active for %s: %w", nfsMountTarget, err)
+		if i < attempts {
+			time.Sleep(time.Duration(1<<(i-1)) * time.Second)
+		}
 	}
-	fields := strings.Fields(strings.TrimSpace(out))
-	if len(fields) < 2 {
-		return fmt.Errorf("unexpected findmnt output for %s: %q", nfsMountTarget, out)
-	}
-	if fields[0] != nfsServerExportSource() {
-		return fmt.Errorf("unexpected NFS source for %s: got %s want %s", nfsMountTarget, fields[0], nfsServerExportSource())
-	}
-	if fields[1] != nfsMountTarget {
-		return fmt.Errorf("unexpected mount target: got %s want %s", fields[1], nfsMountTarget)
-	}
-	return nil
+
+	return fmt.Errorf("verify %s failed after %d attempts with backoff: %w", nfsMountTarget, attempts, lastErr)
 }
