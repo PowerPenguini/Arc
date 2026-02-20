@@ -209,6 +209,8 @@ func ensureWireGuardKernelRemote(client *ssh.Client, osid string) error {
 		script += "sudo -n apt-get install -y wireguard-dkms \"linux-headers-${krel}\" || true\n"
 	case "debian":
 		script += "sudo -n apt-get install -y wireguard-dkms \"linux-headers-${krel}\" || true\n"
+	case "arch", "manjaro":
+		script += "sudo -n pacman -Sy --noconfirm dkms wireguard-dkms linux-headers || true\n"
 	}
 	script += "sudo -n modprobe wireguard\n"
 	if _, err := runRemoteCommand(client, script, false, ""); err != nil {

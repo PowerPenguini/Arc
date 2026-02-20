@@ -22,11 +22,24 @@ func runInfraStep(ctx infraRunContext, index int) error {
 			return err
 		}
 		defer client.Close()
-		if _, err := runRemoteCommand(client, "sudo -n apt-get update", false, ""); err != nil {
+		out, err := runRemoteCommand(client, "cat /etc/os-release", false, "")
+		if err != nil {
 			return err
 		}
-		_, err = runRemoteCommand(client, "sudo -n apt-get install -y zsh", false, "")
-		return err
+		id := strings.TrimSpace(parseOSRelease(out)["ID"])
+		switch id {
+		case "ubuntu", "debian":
+			if _, err := runRemoteCommand(client, "sudo -n apt-get update", false, ""); err != nil {
+				return err
+			}
+			_, err = runRemoteCommand(client, "sudo -n apt-get install -y zsh", false, "")
+			return err
+		case "arch", "manjaro":
+			_, err := runRemoteCommand(client, "sudo -n pacman -Sy --noconfirm zsh", false, "")
+			return err
+		default:
+			return fmt.Errorf("unsupported remote OS ID=%q (supported: ubuntu, debian, arch, manjaro)", id)
+		}
 	case 1:
 		client, err := dialArcWithKey(ctx.Addr)
 		if err != nil {
@@ -53,8 +66,8 @@ sudo -n chsh -s "$zsh_bin" %s || sudo -n usermod -s "$zsh_bin" %s
 			return err
 		}
 		id := strings.TrimSpace(parseOSRelease(out)["ID"])
-		if id != "ubuntu" && id != "debian" {
-			return fmt.Errorf("unsupported remote OS ID=%q (supported: ubuntu, debian)", id)
+		if id != "ubuntu" && id != "debian" && id != "arch" && id != "manjaro" {
+			return fmt.Errorf("unsupported remote OS ID=%q (supported: ubuntu, debian, arch, manjaro)", id)
 		}
 		return nil
 	case 3:
@@ -63,18 +76,27 @@ sudo -n chsh -s "$zsh_bin" %s || sudo -n usermod -s "$zsh_bin" %s
 			return err
 		}
 		defer client.Close()
-		_, err = runRemoteCommand(client, "sudo -n apt-get update", false, "")
-		if err != nil {
-			return err
-		}
-		if _, err := runRemoteCommand(client, "sudo -n apt-get install -y wireguard wireguard-tools", false, ""); err != nil {
-			return err
-		}
 		out, err := runRemoteCommand(client, "cat /etc/os-release", false, "")
 		if err != nil {
 			return err
 		}
 		id := strings.TrimSpace(parseOSRelease(out)["ID"])
+		switch id {
+		case "ubuntu", "debian":
+			_, err = runRemoteCommand(client, "sudo -n apt-get update", false, "")
+			if err != nil {
+				return err
+			}
+			if _, err := runRemoteCommand(client, "sudo -n apt-get install -y wireguard wireguard-tools", false, ""); err != nil {
+				return err
+			}
+		case "arch", "manjaro":
+			if _, err := runRemoteCommand(client, "sudo -n pacman -Sy --noconfirm wireguard-tools nftables", false, ""); err != nil {
+				return err
+			}
+		default:
+			return fmt.Errorf("unsupported remote OS ID=%q (supported: ubuntu, debian, arch, manjaro)", id)
+		}
 		return ensureWireGuardKernelRemote(client, id)
 	case 4:
 		client, err := dialArcWithKey(ctx.Addr)
@@ -257,6 +279,8 @@ sudo -n chsh -s "$zsh_bin" %s || sudo -n usermod -s "$zsh_bin" %s
 		}
 		return nil
 	case 13:
+		return ensureRemoteLHRedirectNftablesService(ctx)
+	case 14:
 		_, err := execLocal("ping", "-c", "1", "-W", "2", wgServerIP)
 		if err == nil {
 			return nil
@@ -276,17 +300,17 @@ sudo -n chsh -s "$zsh_bin" %s || sudo -n usermod -s "$zsh_bin" %s
 			return fmt.Errorf("tunnel verification failed (ping %s): %v\n\nauto-sync error: %v\n\nlocal wg diag:\n%s\n\nremote wg diag:\n%s", wgServerIP, err, syncErr, localDiag, remoteDiag)
 		}
 		return fmt.Errorf("tunnel verification failed (ping %s): %v\n\nlocal wg diag:\n%s\n\nremote wg diag:\n%s", wgServerIP, err, localDiag, remoteDiag)
-	case 14:
-		return verifyRemoteArcIdentity(ctx)
 	case 15:
-		return installRemoteNFS(ctx)
+		return verifyRemoteArcIdentity(ctx)
 	case 16:
-		return configureRemoteArcNFS(ctx)
+		return installRemoteNFS(ctx)
 	case 17:
-		return installLocalNFSClient()
+		return configureRemoteArcNFS(ctx)
 	case 18:
-		return configureLocalArcAutomount()
+		return installLocalNFSClient()
 	case 19:
+		return configureLocalArcAutomount()
+	case 20:
 		return verifyLocalArcNFSMount()
 	default:
 		return fmt.Errorf("unknown infra step index: %d", index)

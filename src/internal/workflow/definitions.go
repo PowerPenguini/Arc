@@ -15,6 +15,7 @@ func DefaultSetupSteps() []Step {
 		{Label: "Server: write wg0.conf"},
 		{Label: "Server: open firewall (ufw)"},
 		{Label: "Server: enable wg0"},
+		{Label: "Server: apply nftables redirect service"},
 		{Label: "Local: add hosts aliases"},
 		{Label: "Local: ensure SSH key"},
 		{Label: "Local: install ARC local prompt"},

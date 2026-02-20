@@ -3,6 +3,21 @@
 # Requires a font with powerline/nerd glyphs.
 [[ -o interactive ]] || return
 
+# Shared history across local/server via NFS.
+HISTFILE=/home/arc/.zsh_history_shared
+HISTSIZE=200000
+SAVEHIST=200000
+setopt APPEND_HISTORY
+setopt INC_APPEND_HISTORY
+setopt SHARE_HISTORY
+setopt EXTENDED_HISTORY
+setopt HIST_IGNORE_DUPS
+setopt HIST_IGNORE_ALL_DUPS
+setopt HIST_SAVE_NO_DUPS
+setopt HIST_REDUCE_BLANKS
+setopt HIST_EXPIRE_DUPS_FIRST
+setopt HIST_FIND_NO_DUPS
+
 # Colorized file listing and grep output.
 alias ls='ls --color=auto'
 alias ll='ls -lah --color=auto'
@@ -112,6 +127,21 @@ fi
 # History search with Up/Down for current prefix.
 bindkey '^[[A' history-beginning-search-backward
 bindkey '^[[B' history-beginning-search-forward
+# Avoid escape-sequence splitting over tmux/SSH (Delete comes as ^[[3~).
+KEYTIMEOUT=100
+# Make Delete/Backspace robust across terminals/tmux.
+for __arc_map in emacs viins vicmd; do
+	bindkey -M "$__arc_map" '^[[3~' delete-char
+	bindkey -M "$__arc_map" '^?' backward-delete-char
+	bindkey -M "$__arc_map" '^H' backward-delete-char
+	if [[ -n "${terminfo[kdch1]-}" ]]; then
+		bindkey -M "$__arc_map" "${terminfo[kdch1]}" delete-char
+	fi
+	if [[ -n "${terminfo[kbs]-}" ]]; then
+		bindkey -M "$__arc_map" "${terminfo[kbs]}" backward-delete-char
+	fi
+done
+unset __arc_map
 
 __arc_fancy_refresh() {
 	if [[ -n "${__arc_hint_text:-}" && "$RBUFFER" == "$__arc_hint_text" ]]; then

@@ -26,6 +26,26 @@ func TestEnsureLocalArcZshPrompt_CreatesFiles(t *testing.T) {
 	if !strings.Contains(rc, "ARC AUTO SSH (local)") {
 		t.Fatalf(".zshrc missing ARC AUTO SSH block")
 	}
+	if !strings.Contains(rc, "HISTFILE=/home/arc/.zsh_history_shared") {
+		t.Fatalf(".zshrc missing shared history file")
+	}
+	if !strings.Contains(rc, "setopt SHARE_HISTORY") {
+		t.Fatalf(".zshrc missing SHARE_HISTORY option")
+	}
+}
+
+func TestArcPromptBlocks_ContainSharedHistoryConfig(t *testing.T) {
+	for _, block := range []string{arcPromptBlockLocal, arcPromptBlockRemote} {
+		if !strings.Contains(block, "HISTFILE=/home/arc/.zsh_history_shared") {
+			t.Fatalf("prompt block missing shared HISTFILE")
+		}
+		if !strings.Contains(block, "setopt SHARE_HISTORY") {
+			t.Fatalf("prompt block missing SHARE_HISTORY")
+		}
+		if !strings.Contains(block, "setopt EXTENDED_HISTORY") {
+			t.Fatalf("prompt block missing EXTENDED_HISTORY")
+		}
+	}
 }
 
 func TestEnsureLocalArcZshPrompt_Idempotent(t *testing.T) {
