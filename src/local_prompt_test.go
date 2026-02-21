@@ -58,11 +58,14 @@ func TestArcPromptBlockLocal_ContainsWaypipeAutoForwarding(t *testing.T) {
 	if !strings.Contains(arcPromptBlockLocal, "command -v waypipe") {
 		t.Fatalf("local prompt block missing waypipe availability check")
 	}
-	if !strings.Contains(arcPromptBlockLocal, "waypipe --display wayland-0 ssh -t") {
-		t.Fatalf("local prompt block missing waypipe ssh invocation")
+	if !strings.Contains(arcPromptBlockLocal, "__arc_waypipe_service_name='arc-waypipe.service'") {
+		t.Fatalf("local prompt block missing waypipe service name")
 	}
-	if !strings.Contains(arcPromptBlockLocal, "--display wayland-0") {
-		t.Fatalf("local prompt block missing fixed wayland-0 display")
+	if !strings.Contains(arcPromptBlockLocal, "systemctl --user start \"$__arc_waypipe_service_name\"") {
+		t.Fatalf("local prompt block missing waypipe service start")
+	}
+	if !strings.Contains(arcPromptBlockLocal, "sw: warning: waypipe service is not active; continuing with plain ssh/tmux") {
+		t.Fatalf("local prompt block missing waypipe fallback warning")
 	}
 	if !strings.Contains(arcPromptBlockLocal, "ARC_WAYPIPE_HINT_ONCE") {
 		t.Fatalf("local prompt block missing one-time waypipe hint guard")
@@ -75,6 +78,9 @@ func TestArcPromptBlockRemote_ContainsWaypipeRuntimeSetup(t *testing.T) {
 	}
 	if !strings.Contains(arcPromptBlockRemote, "XDG_RUNTIME_DIR") {
 		t.Fatalf("remote prompt block missing XDG_RUNTIME_DIR fallback")
+	}
+	if !strings.Contains(arcPromptBlockRemote, "\"$XDG_RUNTIME_DIR\"/wayland-*(N) \"$XDG_RUNTIME_DIR\"/waypipe-*(N)") {
+		t.Fatalf("remote prompt block missing Wayland socket autodetection")
 	}
 	if !strings.Contains(arcPromptBlockRemote, "OZONE_PLATFORM=wayland") {
 		t.Fatalf("remote prompt block missing Wayland ozone preference")

@@ -355,9 +355,91 @@ chmod 600 "$HOME/.config/arc/waypipe.env"
 `
 		_, err = runRemoteCommand(client, script, false, "")
 		return err
+	case 22:
+		return configureLocalWaypipeService()
 	default:
 		return fmt.Errorf("unknown infra step index: %d", index)
 	}
+}
+
+func configureLocalWaypipeService() error {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return fmt.Errorf("cannot resolve home dir")
+	}
+
+	configDir := filepath.Join(home, ".config", "arc")
+	if err := ensureDir0700(configDir); err != nil {
+		return err
+	}
+	systemdDir := filepath.Join(home, ".config", "systemd", "user")
+	if err := ensureDir0700(systemdDir); err != nil {
+		return err
+	}
+	localBinDir := filepath.Join(home, ".local", "bin")
+	if err := ensureDir0700(localBinDir); err != nil {
+		return err
+	}
+
+	envPath := filepath.Join(configDir, "waypipe-client.env")
+	envData := []byte(strings.Join([]string{
+		"ARC_REMOTE_USER=arc",
+		"ARC_REMOTE_HOSTS=remotehost pub.remotehost",
+		"ARC_WAYPIPE_DISPLAY=wayland-0",
+		"",
+	}, "\n"))
+	if err := writeFile0600(envPath, envData); err != nil {
+		return err
+	}
+
+	runnerPath := filepath.Join(localBinDir, "arc-waypipe-forward")
+	runner := `#!/bin/sh
+set -eu
+
+hosts="${ARC_REMOTE_HOSTS:-remotehost pub.remotehost}"
+user="${ARC_REMOTE_USER:-arc}"
+display_name="${ARC_WAYPIPE_DISPLAY:-wayland-arc}"
+probe_opts="-o BatchMode=yes -o ConnectTimeout=2 -o ConnectionAttempts=1 -o StrictHostKeyChecking=accept-new -o LogLevel=ERROR"
+ssh_opts="-q -o LogLevel=QUIET -o ServerAliveInterval=2 -o ServerAliveCountMax=1 -o TCPKeepAlive=yes"
+remote_keepalive='sh -lc ". \"$HOME/.config/arc/waypipe.env\" 2>/dev/null || true; while :; do sleep 3600; done"'
+
+while :; do
+	connected=0
+	for host in $hosts; do
+		if ssh $probe_opts "${user}@${host}" true >/dev/null 2>&1; then
+			connected=1
+			waypipe --display "$display_name" ssh $ssh_opts "${user}@${host}" "$remote_keepalive" || true
+			break
+		fi
+	done
+	if [ "$connected" -eq 0 ]; then
+		sleep 2
+		continue
+	fi
+	sleep 1
+done
+`
+	if err := os.WriteFile(runnerPath, []byte(runner), 0o700); err != nil {
+		return err
+	}
+
+	servicePath := filepath.Join(systemdDir, "arc-waypipe.service")
+	service, err := renderTemplateFile("templates/arc_waypipe.service.tmpl", map[string]string{})
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(servicePath, []byte(service), 0o644); err != nil {
+		return err
+	}
+
+	if _, err := execLocal("systemctl", "--user", "daemon-reload"); err != nil {
+		return err
+	}
+	if _, err := execLocal("systemctl", "--user", "enable", "arc-waypipe.service"); err != nil {
+		return err
+	}
+	_, _ = execLocal("systemctl", "--user", "start", "arc-waypipe.service")
+	return nil
 }
 
 func wgDiagLocal() (string, error) {

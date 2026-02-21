@@ -1,0 +1,15 @@
+[Unit]
+Description=ARC persistent Waypipe tunnel
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=-%h/.config/arc/waypipe-client.env
+ExecStart=%h/.local/bin/arc-waypipe-forward
+Restart=always
+RestartSec=2
+StartLimitIntervalSec=0
+
+[Install]
+WantedBy=default.target

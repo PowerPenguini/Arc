@@ -16,20 +16,33 @@ __arc_sw_connect() {
 	local __arc_ssh_run_opts=(-q -o LogLevel=QUIET -o ServerAliveInterval=2 -o ServerAliveCountMax=1 -o TCPKeepAlive=yes)
 	local __arc_tmux_term='xterm-256color'
 	local __arc_ssh_cmd="env TERM=${__arc_tmux_term} tmux new-session -A -D -s ${__arc_tmux_session}"
+	local __arc_last_err=""
 
 	if ssh "${__arc_ssh_probe_opts[@]}" arc@remotehost true >/dev/null 2>&1; then
 		ssh -t "${__arc_ssh_run_opts[@]}" arc@remotehost "$__arc_ssh_cmd"
 		__arc_ssh_rc=$?
+		(( __arc_ssh_rc != 0 )) && __arc_last_err="remotehost: session attach failed (exit ${__arc_ssh_rc})"
 		# Clear the extra terminal line left by ssh/tmux detach return.
 		(( __arc_ssh_rc == 0 )) && printf '\r\033[1A\033[2K\r'
 		return $__arc_ssh_rc
+	else
+		__arc_last_err="remotehost: probe failed"
 	fi
 	if ssh "${__arc_ssh_probe_opts[@]}" arc@pub.remotehost true >/dev/null 2>&1; then
 		ssh -t "${__arc_ssh_run_opts[@]}" arc@pub.remotehost "$__arc_ssh_cmd"
 		__arc_ssh_rc=$?
+		(( __arc_ssh_rc != 0 )) && __arc_last_err="pub.remotehost: session attach failed (exit ${__arc_ssh_rc})"
 		(( __arc_ssh_rc == 0 )) && printf '\r\033[1A\033[2K\r'
 		return $__arc_ssh_rc
+	else
+		if [[ -n "$__arc_last_err" ]]; then
+			__arc_last_err="${__arc_last_err}; pub.remotehost: probe failed"
+		else
+			__arc_last_err="pub.remotehost: probe failed"
+		fi
 	fi
+	printf 'sw: cannot connect (%s)\n' "$__arc_last_err" >&2
+	printf 'sw: run `ssh -vv arc@remotehost true` and `ssh -vv arc@pub.remotehost true` for details\n' >&2
 	return 255
 }
 

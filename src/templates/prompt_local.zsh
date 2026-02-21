@@ -26,6 +26,51 @@ alias la='ls -A --color=auto'
 alias l='ls -CF --color=auto'
 alias grep='grep --color=auto'
 
+__arc_waypipe_service_name='arc-waypipe.service'
+
+__arc_waypipe_ensure_active() {
+	# Nothing to do on non-Wayland local terminals.
+	[[ -n "${WAYLAND_DISPLAY-}" ]] || return 0
+
+	if ! command -v waypipe >/dev/null 2>&1; then
+		if [[ -z "${ARC_WAYPIPE_HINT_ONCE-}" ]]; then
+			ARC_WAYPIPE_HINT_ONCE=1
+			printf 'sw: wayland detected but waypipe is missing; install waypipe locally and on server (plus Wayland runtime on server)\n' >&2
+		fi
+		return 1
+	fi
+
+	if ! command -v systemctl >/dev/null 2>&1; then
+		return 1
+	fi
+
+	systemctl --user import-environment WAYLAND_DISPLAY XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS >/dev/null 2>&1 || true
+	if systemctl --user is-active --quiet "$__arc_waypipe_service_name"; then
+		return 0
+	fi
+
+	systemctl --user start "$__arc_waypipe_service_name" >/dev/null 2>&1 || return 1
+	local __arc_try
+	for __arc_try in 1 2 3; do
+		systemctl --user is-active --quiet "$__arc_waypipe_service_name" && return 0
+		sleep 0.3
+	done
+	return 1
+}
+
+wp-status() {
+	systemctl --user status --no-pager "$__arc_waypipe_service_name"
+}
+
+wp-restart() {
+	systemctl --user import-environment WAYLAND_DISPLAY XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS >/dev/null 2>&1 || true
+	systemctl --user restart "$__arc_waypipe_service_name"
+}
+
+wp-stop() {
+	systemctl --user stop "$__arc_waypipe_service_name"
+}
+
 __arc_sw_connect() {
 	local __arc_tmux_session="${1:-arc}"
 	if [[ ! "$__arc_tmux_session" =~ ^[A-Za-z0-9._-]+$ ]]; then
@@ -39,39 +84,41 @@ __arc_sw_connect() {
 	local __arc_ssh_run_opts=(-q -o LogLevel=QUIET -o ServerAliveInterval=2 -o ServerAliveCountMax=1 -o TCPKeepAlive=yes)
 	local __arc_tmux_term='xterm-256color'
 	local __arc_ssh_cmd="env TERM=${__arc_tmux_term} tmux new-session -A -D -s ${__arc_tmux_session}"
-	local __arc_use_waypipe=0
+	local __arc_last_err=""
 
-	# Use waypipe automatically when running under Wayland and waypipe is available.
+	# GUI forwarding should not depend on a specific terminal tab/session:
+	# ensure the persistent waypipe user service is up before connecting.
 	if [[ -n "${WAYLAND_DISPLAY-}" ]]; then
-		if command -v waypipe >/dev/null 2>&1; then
-			__arc_use_waypipe=1
-		elif [[ -z "${ARC_WAYPIPE_HINT_ONCE-}" ]]; then
-			ARC_WAYPIPE_HINT_ONCE=1
-			printf 'sw: wayland detected but waypipe is missing; install waypipe locally and on server (plus Wayland runtime on server)\n' >&2
+		if ! __arc_waypipe_ensure_active; then
+			printf 'sw: warning: waypipe service is not active; continuing with plain ssh/tmux\n' >&2
 		fi
 	fi
 
 	if ssh "${__arc_ssh_probe_opts[@]}" arc@remotehost true >/dev/null 2>&1; then
-		if (( __arc_use_waypipe == 1 )); then
-			waypipe --display wayland-0 ssh -t "${__arc_ssh_run_opts[@]}" arc@remotehost "$__arc_ssh_cmd"
-		else
-			ssh -t "${__arc_ssh_run_opts[@]}" arc@remotehost "$__arc_ssh_cmd"
-		fi
+		ssh -t "${__arc_ssh_run_opts[@]}" arc@remotehost "$__arc_ssh_cmd"
 		__arc_ssh_rc=$?
+		(( __arc_ssh_rc != 0 )) && __arc_last_err="remotehost: session attach failed (exit ${__arc_ssh_rc})"
 		# Clear the extra terminal line left by ssh/tmux detach return.
 		(( __arc_ssh_rc == 0 )) && printf '\r\033[1A\033[2K\r'
 		return $__arc_ssh_rc
+	else
+		__arc_last_err="remotehost: probe failed"
 	fi
 	if ssh "${__arc_ssh_probe_opts[@]}" arc@pub.remotehost true >/dev/null 2>&1; then
-		if (( __arc_use_waypipe == 1 )); then
-			waypipe --display wayland-0 ssh -t "${__arc_ssh_run_opts[@]}" arc@pub.remotehost "$__arc_ssh_cmd"
-		else
-			ssh -t "${__arc_ssh_run_opts[@]}" arc@pub.remotehost "$__arc_ssh_cmd"
-		fi
+		ssh -t "${__arc_ssh_run_opts[@]}" arc@pub.remotehost "$__arc_ssh_cmd"
 		__arc_ssh_rc=$?
+		(( __arc_ssh_rc != 0 )) && __arc_last_err="pub.remotehost: session attach failed (exit ${__arc_ssh_rc})"
 		(( __arc_ssh_rc == 0 )) && printf '\r\033[1A\033[2K\r'
 		return $__arc_ssh_rc
+	else
+		if [[ -n "$__arc_last_err" ]]; then
+			__arc_last_err="${__arc_last_err}; pub.remotehost: probe failed"
+		else
+			__arc_last_err="pub.remotehost: probe failed"
+		fi
 	fi
+	printf 'sw: cannot connect (%s)\n' "$__arc_last_err" >&2
+	printf 'sw: run `ssh -vv arc@remotehost true` and `ssh -vv arc@pub.remotehost true` for details\n' >&2
 	return 255
 }
 

@@ -31,9 +31,10 @@ func DefaultSetupSteps() []Step {
 		{Label: "Server: resolve arc UID/GID for NFS squash"},
 		{Label: "Server: install NFS server"},
 		{Label: "Server: export /home/arc over NFS (WireGuard only)"},
-			{Label: "Local: install NFS client"},
-			{Label: "Local: configure /home/arc automount"},
-			{Label: "Verify: verify /home/arc NFS mount"},
-			{Label: "Server: configure waypipe runtime"},
-		}
+		{Label: "Local: install NFS client"},
+		{Label: "Local: configure /home/arc automount"},
+		{Label: "Verify: verify /home/arc NFS mount"},
+		{Label: "Server: configure waypipe runtime"},
+		{Label: "Local: configure persistent waypipe tunnel"},
 	}
+}

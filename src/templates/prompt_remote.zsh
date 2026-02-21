@@ -11,6 +11,17 @@ elif [[ -z "${XDG_RUNTIME_DIR-}" || ! -d "$XDG_RUNTIME_DIR" ]]; then
 	chmod 700 "$XDG_RUNTIME_DIR" 2>/dev/null || true
 fi
 
+# If session entered tmux without inherited WAYLAND_DISPLAY, recover it from runtime dir.
+if [[ -z "${WAYLAND_DISPLAY-}" && -n "${XDG_RUNTIME_DIR-}" && -d "$XDG_RUNTIME_DIR" ]]; then
+	for __arc_wayland_path in "$XDG_RUNTIME_DIR"/wayland-*(N) "$XDG_RUNTIME_DIR"/waypipe-*(N); do
+		if [[ -S "$__arc_wayland_path" && -r "$__arc_wayland_path" && -w "$__arc_wayland_path" ]]; then
+			export WAYLAND_DISPLAY="${__arc_wayland_path:t}"
+			break
+		fi
+	done
+	unset __arc_wayland_path
+fi
+
 # Prefer Wayland backend for Chromium/Electron family when connected via waypipe.
 if [[ -n "${WAYLAND_DISPLAY-}" && -z "${DISPLAY-}" ]]; then
 	export OZONE_PLATFORM=wayland
