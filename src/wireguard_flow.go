@@ -1,6 +1,7 @@
 package main
 
 import (
+	"arc/internal/workflow"
 	"errors"
 	"fmt"
 	"os"
@@ -14,9 +15,9 @@ type infraRunContext struct {
 	WG   wgConfig
 }
 
-func runInfraStep(ctx infraRunContext, index int) error {
-	switch index {
-	case 0:
+func runInfraStep(ctx infraRunContext, stepID workflow.StepID) error {
+	switch stepID {
+	case workflow.StepInstallServerZsh:
 		client, err := dialArcWithKey(ctx.Addr)
 		if err != nil {
 			return err
@@ -40,7 +41,7 @@ func runInfraStep(ctx infraRunContext, index int) error {
 		default:
 			return fmt.Errorf("unsupported remote OS ID=%q (supported: ubuntu, debian, arch, manjaro)", id)
 		}
-	case 1:
+	case workflow.StepSetServerDefaultShell:
 		client, err := dialArcWithKey(ctx.Addr)
 		if err != nil {
 			return err
@@ -55,7 +56,7 @@ sudo -n chsh -s "$zsh_bin" %s || sudo -n usermod -s "$zsh_bin" %s
 `, arcUser, arcUser, arcUser)
 		_, err = runRemoteCommand(client, script, false, "")
 		return err
-	case 2:
+	case workflow.StepDetectServerOS:
 		client, err := dialArcWithKey(ctx.Addr)
 		if err != nil {
 			return err
@@ -70,7 +71,7 @@ sudo -n chsh -s "$zsh_bin" %s || sudo -n usermod -s "$zsh_bin" %s
 			return fmt.Errorf("unsupported remote OS ID=%q (supported: ubuntu, debian, arch, manjaro)", id)
 		}
 		return nil
-	case 3:
+	case workflow.StepInstallServerWireGuard:
 		client, err := dialArcWithKey(ctx.Addr)
 		if err != nil {
 			return err
@@ -98,7 +99,7 @@ sudo -n chsh -s "$zsh_bin" %s || sudo -n usermod -s "$zsh_bin" %s
 			return fmt.Errorf("unsupported remote OS ID=%q (supported: ubuntu, debian, arch, manjaro)", id)
 		}
 		return ensureWireGuardKernelRemote(client, id)
-	case 4:
+	case workflow.StepWriteServerWGConf:
 		client, err := dialArcWithKey(ctx.Addr)
 		if err != nil {
 			return err
@@ -124,7 +125,7 @@ sudo -n chsh -s "$zsh_bin" %s || sudo -n usermod -s "$zsh_bin" %s
 		cmd := "sudo -n sh -lc " + shSingleQuote(script)
 		_, err = runRemoteCommand(client, cmd, false, "")
 		return err
-	case 5:
+	case workflow.StepOpenServerFirewall:
 		client, err := dialArcWithKey(ctx.Addr)
 		if err != nil {
 			return err
@@ -139,7 +140,7 @@ fi
 `, wgPort)
 		_, err = runRemoteCommand(client, script, false, "")
 		return err
-	case 6:
+	case workflow.StepEnableServerWG:
 		client, err := dialArcWithKey(ctx.Addr)
 		if err != nil {
 			return err
@@ -149,7 +150,7 @@ fi
 		cmd := fmt.Sprintf("sudo -n systemctl enable wg-quick@%s && sudo -n systemctl restart wg-quick@%s && sudo -n systemctl is-active --quiet wg-quick@%s", wgInterface, wgInterface, wgInterface)
 		_, err = runRemoteCommand(client, cmd, false, "")
 		return err
-	case 7:
+	case workflow.StepInstallLocalZsh:
 		id, err := localOSID()
 		if err != nil {
 			return err
@@ -167,7 +168,7 @@ fi
 		default:
 			return fmt.Errorf("unsupported local OS ID=%q (supported: ubuntu, debian, arch, manjaro)", id)
 		}
-	case 8:
+	case workflow.StepSetLocalDefaultShell:
 		targetUser := strings.TrimSpace(os.Getenv("USER"))
 		if targetUser == "" {
 			return fmt.Errorf("cannot resolve local username")
@@ -181,7 +182,7 @@ sudo -n chsh -s "$zsh_bin" %s || sudo -n usermod -s "$zsh_bin" %s
 `, shSingleQuote(targetUser), shSingleQuote(targetUser), shSingleQuote(targetUser))
 		_, err := execLocal("sh", "-lc", script)
 		return err
-	case 9:
+	case workflow.StepDetectLocalOS:
 		id, err := localOSID()
 		if err != nil {
 			return err
@@ -190,7 +191,7 @@ sudo -n chsh -s "$zsh_bin" %s || sudo -n usermod -s "$zsh_bin" %s
 			return fmt.Errorf("unsupported local OS ID=%q (supported: ubuntu, debian, arch, manjaro)", id)
 		}
 		return nil
-	case 10:
+	case workflow.StepInstallLocalWireGuard:
 		id, err := localOSID()
 		if err != nil {
 			return err
@@ -214,7 +215,7 @@ sudo -n chsh -s "$zsh_bin" %s || sudo -n usermod -s "$zsh_bin" %s
 		default:
 			return fmt.Errorf("unsupported local OS ID=%q", id)
 		}
-	case 11:
+	case workflow.StepWriteLocalWGConf:
 		home, err := os.UserHomeDir()
 		if err != nil || home == "" {
 			return fmt.Errorf("cannot resolve home dir")
@@ -250,7 +251,7 @@ sudo -n chsh -s "$zsh_bin" %s || sudo -n usermod -s "$zsh_bin" %s
 		}
 		_ = os.Remove(tmp)
 		return nil
-	case 12:
+	case workflow.StepEnableLocalWG:
 		if _, err := execLocal("sudo", "-n", "systemctl", "enable", "wg-quick@"+wgInterface); err != nil {
 			return err
 		}
@@ -278,9 +279,9 @@ sudo -n chsh -s "$zsh_bin" %s || sudo -n usermod -s "$zsh_bin" %s
 			return err
 		}
 		return nil
-	case 13:
+	case workflow.StepApplyServerNFTables:
 		return ensureRemoteLHRedirectNftablesService(ctx)
-	case 14:
+	case workflow.StepVerifyTunnelConnectivity:
 		_, err := execLocal("ping", "-c", "1", "-W", "2", wgServerIP)
 		if err == nil {
 			return nil
@@ -300,19 +301,19 @@ sudo -n chsh -s "$zsh_bin" %s || sudo -n usermod -s "$zsh_bin" %s
 			return fmt.Errorf("tunnel verification failed (ping %s): %v\n\nauto-sync error: %v\n\nlocal wg diag:\n%s\n\nremote wg diag:\n%s", wgServerIP, err, syncErr, localDiag, remoteDiag)
 		}
 		return fmt.Errorf("tunnel verification failed (ping %s): %v\n\nlocal wg diag:\n%s\n\nremote wg diag:\n%s", wgServerIP, err, localDiag, remoteDiag)
-	case 15:
+	case workflow.StepResolveArcUIDGID:
 		return verifyRemoteArcIdentity(ctx)
-	case 16:
+	case workflow.StepInstallRemoteNFS:
 		return installRemoteNFS(ctx)
-	case 17:
+	case workflow.StepExportRemoteArcNFS:
 		return configureRemoteArcNFS(ctx)
-	case 18:
+	case workflow.StepInstallLocalNFSClient:
 		return installLocalNFSClient()
-	case 19:
+	case workflow.StepConfigureLocalArcAutomount:
 		return configureLocalArcAutomount()
-	case 20:
+	case workflow.StepVerifyLocalArcNFSMount:
 		return verifyLocalArcNFSMount()
-	case 21:
+	case workflow.StepConfigureRemoteWaypipe:
 		client, err := dialArcWithKey(ctx.Addr)
 		if err != nil {
 			return err
@@ -355,10 +356,10 @@ chmod 600 "$HOME/.config/arc/waypipe.env"
 `
 		_, err = runRemoteCommand(client, script, false, "")
 		return err
-	case 22:
+	case workflow.StepConfigureLocalWaypipe:
 		return configureLocalWaypipeService()
 	default:
-		return fmt.Errorf("unknown infra step index: %d", index)
+		return fmt.Errorf("unknown infra step ID: %q", stepID)
 	}
 }
 

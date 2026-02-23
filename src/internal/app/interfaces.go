@@ -1,5 +1,7 @@
 package app
 
+import "arc/internal/workflow"
+
 type WGConfig struct {
 	ServerPriv string
 	ServerPub  string
@@ -19,7 +21,7 @@ type SetupStepRequest struct {
 	UseSudo       bool
 	PubKeyLine    string
 	WG            WGConfig
-	Index         int
+	StepID        workflow.StepID
 }
 
 type SetupStepResult struct {
@@ -32,5 +34,6 @@ type SetupStepResult struct {
 type Services interface {
 	CheckLocalSudo() error
 	ParseSSHConnectTarget(target string) (user, host, addr string, err error)
+	SetupDefinition() []workflow.Step
 	RunSetupStep(req SetupStepRequest) (SetupStepResult, error)
 }

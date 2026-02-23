@@ -2,12 +2,58 @@ package main
 
 import (
 	"arc/internal/app"
+	"arc/internal/workflow"
 	"fmt"
 	"path/filepath"
 	"strings"
+	"sync"
 )
 
 type runtimeServices struct{}
+
+type stepExecutor func(req app.SetupStepRequest, wg wgConfig, res *app.SetupStepResult) error
+
+var (
+	validateExecutorsOnce sync.Once
+	validateExecutorsErr  error
+)
+
+var runtimeStepExecutors = map[workflow.StepID]stepExecutor{
+	workflow.StepDetectPrivilegedMode:       execDetectPrivilegedMode,
+	workflow.StepCreateArcUser:              execCreateArcUser,
+	workflow.StepAddArcToSudoers:            execAddArcToSudoers,
+	workflow.StepCreateArcHushlogin:         execCreateArcHushlogin,
+	workflow.StepInstallServerArcZshPrompt:  execInstallServerArcZshPrompt,
+	workflow.StepInstallServerArcTmux:       execInstallServerArcTmux,
+	workflow.StepInstallServerZsh:           execInfraStep,
+	workflow.StepSetServerDefaultShell:      execInfraStep,
+	workflow.StepDetectServerOS:             execInfraStep,
+	workflow.StepInstallServerWireGuard:     execInfraStep,
+	workflow.StepWriteServerWGConf:          execInfraStep,
+	workflow.StepOpenServerFirewall:         execInfraStep,
+	workflow.StepEnableServerWG:             execInfraStep,
+	workflow.StepApplyServerNFTables:        execInfraStep,
+	workflow.StepAddLocalHostsAliases:       execAddLocalHostsAliases,
+	workflow.StepEnsureLocalSSHKey:          execEnsureLocalSSHKey,
+	workflow.StepInstallLocalArcPrompt:      execInstallLocalArcPrompt,
+	workflow.StepInstallLocalZsh:            execInfraStep,
+	workflow.StepSetLocalDefaultShell:       execInfraStep,
+	workflow.StepDetectLocalOS:              execInfraStep,
+	workflow.StepInstallLocalWireGuard:      execInfraStep,
+	workflow.StepWriteLocalWGConf:           execInfraStep,
+	workflow.StepEnableLocalWG:              execInfraStep,
+	workflow.StepAddArcAuthorizedKey:        execAddArcAuthorizedKey,
+	workflow.StepVerifyArcSSHLogin:          execVerifyArcSSHLogin,
+	workflow.StepVerifyTunnelConnectivity:   execVerifyTunnelConnectivity,
+	workflow.StepResolveArcUIDGID:           execInfraStep,
+	workflow.StepInstallRemoteNFS:           execInfraStep,
+	workflow.StepExportRemoteArcNFS:         execInfraStep,
+	workflow.StepInstallLocalNFSClient:      execInfraStep,
+	workflow.StepConfigureLocalArcAutomount: execInfraStep,
+	workflow.StepVerifyLocalArcNFSMount:     execInfraStep,
+	workflow.StepConfigureRemoteWaypipe:     execInfraStep,
+	workflow.StepConfigureLocalWaypipe:      execInfraStep,
+}
 
 func newRuntimeServices() app.Services { return runtimeServices{} }
 
@@ -20,7 +66,31 @@ func (runtimeServices) ParseSSHConnectTarget(target string) (user, host, addr st
 	return parseSSHConnectTarget(target)
 }
 
+func (runtimeServices) SetupDefinition() []workflow.Step {
+	if err := validateRuntimeStepRegistry(); err != nil {
+		return []workflow.Step{{
+			ID:    "setup.registry.invalid",
+			Label: "Setup registry invalid",
+			State: workflow.StepFailed,
+			Err:   err.Error(),
+		}}
+	}
+	return workflow.DefaultSetupSteps()
+}
+
 func (runtimeServices) RunSetupStep(req app.SetupStepRequest) (app.SetupStepResult, error) {
+	if err := validateRuntimeStepRegistry(); err != nil {
+		return app.SetupStepResult{}, err
+	}
+	if req.StepID == "" {
+		return app.SetupStepResult{}, fmt.Errorf("missing step ID")
+	}
+
+	executor, ok := runtimeStepExecutors[req.StepID]
+	if !ok {
+		return app.SetupStepResult{}, fmt.Errorf("unknown step ID: %q", req.StepID)
+	}
+
 	res := app.SetupStepResult{}
 	wg := fromAppWG(req.WG)
 	if wg.Endpoint == "" && strings.TrimSpace(req.Host) != "" {
@@ -31,313 +101,168 @@ func (runtimeServices) RunSetupStep(req app.SetupStepRequest) (app.SetupStepResu
 		wg = cfg
 	}
 
-	switch req.Index {
-	case 0:
-		// Server: detect privileged mode.
-		client, err := dialWithPassword(req.BootstrapUser, req.Addr, req.Password)
-		if err != nil {
-			return res, err
-		}
-		sudoOK, err := canRunPrivileged(req.BootstrapUser, client, req.Password)
-		if err != nil {
-			_ = client.Close()
-			return res, err
-		}
-		res.UseSudo = &sudoOK
-		_ = client.Close()
-		return res, nil
-
-	case 1:
-		client, err := dialWithPassword(req.BootstrapUser, req.Addr, req.Password)
-		if err != nil {
-			return res, err
-		}
-		err = ensureArcUser(client, req.UseSudo, req.Password)
-		_ = client.Close()
+	if err := executor(req, wg, &res); err != nil {
 		return res, err
-
-	case 2:
-		client, err := dialWithPassword(req.BootstrapUser, req.Addr, req.Password)
-		if err != nil {
-			return res, err
-		}
-		err = ensureArcSudoers(client, req.UseSudo, req.Password)
-		_ = client.Close()
-		return res, err
-
-	case 3:
-		client, err := dialWithPassword(req.BootstrapUser, req.Addr, req.Password)
-		if err != nil {
-			return res, err
-		}
-		err = ensureArcHushLogin(client, req.UseSudo, req.Password)
-		_ = client.Close()
-		return res, err
-
-	case 4:
-		return res, ensureArcZshPrompt(req.Addr)
-
-	case 5:
-		return res, ensureArcTmuxConfig(req.Addr)
-
-	case 6:
-		ctx := infraRunContext{Addr: req.Addr, Host: req.Host, WG: wg}
-		if err := runInfraStep(ctx, 0); err != nil {
-			return res, err
-		}
-		appWG := toAppWG(wg)
-		res.WG = &appWG
-		return res, nil
-
-	case 7:
-		ctx := infraRunContext{Addr: req.Addr, Host: req.Host, WG: wg}
-		if err := runInfraStep(ctx, 1); err != nil {
-			return res, err
-		}
-		appWG := toAppWG(wg)
-		res.WG = &appWG
-		return res, nil
-
-	case 8:
-		ctx := infraRunContext{Addr: req.Addr, Host: req.Host, WG: wg}
-		if err := runInfraStep(ctx, 2); err != nil {
-			return res, err
-		}
-		appWG := toAppWG(wg)
-		res.WG = &appWG
-		return res, nil
-
-	case 9:
-		ctx := infraRunContext{Addr: req.Addr, Host: req.Host, WG: wg}
-		if err := runInfraStep(ctx, 3); err != nil {
-			return res, err
-		}
-		appWG := toAppWG(wg)
-		res.WG = &appWG
-		return res, nil
-
-	case 10:
-		ctx := infraRunContext{Addr: req.Addr, Host: req.Host, WG: wg}
-		if err := runInfraStep(ctx, 4); err != nil {
-			return res, err
-		}
-		appWG := toAppWG(wg)
-		res.WG = &appWG
-		return res, nil
-
-	case 11:
-		ctx := infraRunContext{Addr: req.Addr, Host: req.Host, WG: wg}
-		if err := runInfraStep(ctx, 5); err != nil {
-			return res, err
-		}
-		appWG := toAppWG(wg)
-		res.WG = &appWG
-		return res, nil
-
-	case 12:
-		ctx := infraRunContext{Addr: req.Addr, Host: req.Host, WG: wg}
-		if err := runInfraStep(ctx, 6); err != nil {
-			return res, err
-		}
-		appWG := toAppWG(wg)
-		res.WG = &appWG
-		return res, nil
-
-	case 13:
-		ctx := infraRunContext{Addr: req.Addr, Host: req.Host, WG: wg}
-		if err := runInfraStep(ctx, 13); err != nil {
-			return res, err
-		}
-		appWG := toAppWG(wg)
-		res.WG = &appWG
-		return res, nil
-
-	case 14:
-		if err := ensureLocalArcHostsAliases(req.Host); err != nil {
-			return res, err
-		}
-		return res, nil
-
-	case 15:
-		if err := ensureLocalSSHKeyPair(); err != nil {
-			return res, err
-		}
-		pubPath := filepath.Join(userSSHDir(), "id_ed25519.pub")
-		pubKeyLine, err := readPublicKeyLine(pubPath)
-		if err != nil {
-			return res, err
-		}
-		res.PubKeyLine = pubKeyLine
-		appWG := toAppWG(wg)
-		res.WG = &appWG
-		return res, nil
-
-	case 16:
-		if err := ensureLocalArcZshPrompt(); err != nil {
-			return res, err
-		}
-		appWG := toAppWG(wg)
-		res.WG = &appWG
-		return res, nil
-
-	case 17:
-		ctx := infraRunContext{Addr: req.Addr, Host: req.Host, WG: wg}
-		if err := runInfraStep(ctx, 7); err != nil {
-			return res, err
-		}
-		appWG := toAppWG(wg)
-		res.WG = &appWG
-		return res, nil
-
-	case 18:
-		ctx := infraRunContext{Addr: req.Addr, Host: req.Host, WG: wg}
-		if err := runInfraStep(ctx, 8); err != nil {
-			return res, err
-		}
-		appWG := toAppWG(wg)
-		res.WG = &appWG
-		return res, nil
-
-	case 19:
-		ctx := infraRunContext{Addr: req.Addr, Host: req.Host, WG: wg}
-		if err := runInfraStep(ctx, 9); err != nil {
-			return res, err
-		}
-		appWG := toAppWG(wg)
-		res.WG = &appWG
-		return res, nil
-
-	case 20:
-		ctx := infraRunContext{Addr: req.Addr, Host: req.Host, WG: wg}
-		if err := runInfraStep(ctx, 10); err != nil {
-			return res, err
-		}
-		appWG := toAppWG(wg)
-		res.WG = &appWG
-		return res, nil
-
-	case 21:
-		ctx := infraRunContext{Addr: req.Addr, Host: req.Host, WG: wg}
-		if err := runInfraStep(ctx, 11); err != nil {
-			return res, err
-		}
-		appWG := toAppWG(wg)
-		res.WG = &appWG
-		return res, nil
-
-	case 22:
-		ctx := infraRunContext{Addr: req.Addr, Host: req.Host, WG: wg}
-		if err := runInfraStep(ctx, 12); err != nil {
-			return res, err
-		}
-		appWG := toAppWG(wg)
-		res.WG = &appWG
-		return res, nil
-
-	case 23:
-		if strings.TrimSpace(req.PubKeyLine) == "" {
-			return res, fmt.Errorf("missing public key line")
-		}
-		client, err := dialWithPassword(req.BootstrapUser, req.Addr, req.Password)
-		if err != nil {
-			return res, err
-		}
-		err = ensureArcAuthorizedKey(client, req.UseSudo, req.Password, req.PubKeyLine)
-		_ = client.Close()
-		if err != nil {
-			return res, err
-		}
-		appWG := toAppWG(wg)
-		res.WG = &appWG
-		return res, nil
-
-	case 24:
-		if err := verifyArcKeyLogin(req.Host, req.Addr); err != nil {
-			return res, err
-		}
-		if err := ensureArcZshPrompt(req.Addr); err != nil {
-			return res, err
-		}
-		appWG := toAppWG(wg)
-		res.WG = &appWG
-		return res, nil
-
-	case 25:
-		if err := runInfraStep(infraRunContext{Addr: req.Addr, Host: req.Host, WG: wg}, 14); err != nil {
-			return res, err
-		}
-		res.ReadyAs = arcUser + "@" + req.Host
-		appWG := toAppWG(wg)
-		res.WG = &appWG
-		return res, nil
-	case 26:
-		ctx := infraRunContext{Addr: req.Addr, Host: req.Host, WG: wg}
-		if err := runInfraStep(ctx, 15); err != nil {
-			return res, err
-		}
-		appWG := toAppWG(wg)
-		res.WG = &appWG
-		return res, nil
-	case 27:
-		ctx := infraRunContext{Addr: req.Addr, Host: req.Host, WG: wg}
-		if err := runInfraStep(ctx, 16); err != nil {
-			return res, err
-		}
-		appWG := toAppWG(wg)
-		res.WG = &appWG
-		return res, nil
-	case 28:
-		ctx := infraRunContext{Addr: req.Addr, Host: req.Host, WG: wg}
-		if err := runInfraStep(ctx, 17); err != nil {
-			return res, err
-		}
-		appWG := toAppWG(wg)
-		res.WG = &appWG
-		return res, nil
-	case 29:
-		ctx := infraRunContext{Addr: req.Addr, Host: req.Host, WG: wg}
-		if err := runInfraStep(ctx, 18); err != nil {
-			return res, err
-		}
-		appWG := toAppWG(wg)
-		res.WG = &appWG
-		return res, nil
-	case 30:
-		ctx := infraRunContext{Addr: req.Addr, Host: req.Host, WG: wg}
-		if err := runInfraStep(ctx, 19); err != nil {
-			return res, err
-		}
-		appWG := toAppWG(wg)
-		res.WG = &appWG
-		return res, nil
-	case 31:
-		ctx := infraRunContext{Addr: req.Addr, Host: req.Host, WG: wg}
-		if err := runInfraStep(ctx, 20); err != nil {
-			return res, err
-		}
-		appWG := toAppWG(wg)
-		res.WG = &appWG
-		return res, nil
-	case 32:
-		ctx := infraRunContext{Addr: req.Addr, Host: req.Host, WG: wg}
-		if err := runInfraStep(ctx, 21); err != nil {
-			return res, err
-		}
-		appWG := toAppWG(wg)
-		res.WG = &appWG
-		return res, nil
-	case 33:
-		ctx := infraRunContext{Addr: req.Addr, Host: req.Host, WG: wg}
-		if err := runInfraStep(ctx, 22); err != nil {
-			return res, err
-		}
-		appWG := toAppWG(wg)
-		res.WG = &appWG
-		return res, nil
-
-	default:
-		return res, fmt.Errorf("unknown step index: %d", req.Index)
 	}
+	return res, nil
+}
+
+func validateRuntimeStepRegistry() error {
+	validateExecutorsOnce.Do(func() {
+		defs := workflow.SetupStepDefinitions()
+		if err := workflow.ValidateStepDefinitions(defs); err != nil {
+			validateExecutorsErr = err
+			return
+		}
+		for _, def := range defs {
+			if _, ok := runtimeStepExecutors[def.ID]; !ok {
+				validateExecutorsErr = fmt.Errorf("missing executor for step ID: %q", def.ID)
+				return
+			}
+		}
+		for id := range runtimeStepExecutors {
+			found := false
+			for _, def := range defs {
+				if def.ID == id {
+					found = true
+					break
+				}
+			}
+			if !found {
+				validateExecutorsErr = fmt.Errorf("executor without step definition: %q", id)
+				return
+			}
+		}
+	})
+	return validateExecutorsErr
+}
+
+func attachWG(res *app.SetupStepResult, wg wgConfig) {
+	appWG := toAppWG(wg)
+	res.WG = &appWG
+}
+
+func execDetectPrivilegedMode(req app.SetupStepRequest, _ wgConfig, res *app.SetupStepResult) error {
+	client, err := dialWithPassword(req.BootstrapUser, req.Addr, req.Password)
+	if err != nil {
+		return err
+	}
+	sudoOK, err := canRunPrivileged(req.BootstrapUser, client, req.Password)
+	_ = client.Close()
+	if err != nil {
+		return err
+	}
+	res.UseSudo = &sudoOK
+	return nil
+}
+
+func execCreateArcUser(req app.SetupStepRequest, _ wgConfig, _ *app.SetupStepResult) error {
+	client, err := dialWithPassword(req.BootstrapUser, req.Addr, req.Password)
+	if err != nil {
+		return err
+	}
+	err = ensureArcUser(client, req.UseSudo, req.Password)
+	_ = client.Close()
+	return err
+}
+
+func execAddArcToSudoers(req app.SetupStepRequest, _ wgConfig, _ *app.SetupStepResult) error {
+	client, err := dialWithPassword(req.BootstrapUser, req.Addr, req.Password)
+	if err != nil {
+		return err
+	}
+	err = ensureArcSudoers(client, req.UseSudo, req.Password)
+	_ = client.Close()
+	return err
+}
+
+func execCreateArcHushlogin(req app.SetupStepRequest, _ wgConfig, _ *app.SetupStepResult) error {
+	client, err := dialWithPassword(req.BootstrapUser, req.Addr, req.Password)
+	if err != nil {
+		return err
+	}
+	err = ensureArcHushLogin(client, req.UseSudo, req.Password)
+	_ = client.Close()
+	return err
+}
+
+func execInstallServerArcZshPrompt(req app.SetupStepRequest, _ wgConfig, _ *app.SetupStepResult) error {
+	return ensureArcZshPrompt(req.Addr)
+}
+
+func execInstallServerArcTmux(req app.SetupStepRequest, _ wgConfig, _ *app.SetupStepResult) error {
+	return ensureArcTmuxConfig(req.Addr)
+}
+
+func execInfraStep(req app.SetupStepRequest, wg wgConfig, res *app.SetupStepResult) error {
+	ctx := infraRunContext{Addr: req.Addr, Host: req.Host, WG: wg}
+	if err := runInfraStep(ctx, req.StepID); err != nil {
+		return err
+	}
+	attachWG(res, wg)
+	return nil
+}
+
+func execAddLocalHostsAliases(req app.SetupStepRequest, _ wgConfig, _ *app.SetupStepResult) error {
+	return ensureLocalArcHostsAliases(req.Host)
+}
+
+func execEnsureLocalSSHKey(_ app.SetupStepRequest, wg wgConfig, res *app.SetupStepResult) error {
+	if err := ensureLocalSSHKeyPair(); err != nil {
+		return err
+	}
+	pubPath := filepath.Join(userSSHDir(), "id_ed25519.pub")
+	pubKeyLine, err := readPublicKeyLine(pubPath)
+	if err != nil {
+		return err
+	}
+	res.PubKeyLine = pubKeyLine
+	attachWG(res, wg)
+	return nil
+}
+
+func execInstallLocalArcPrompt(_ app.SetupStepRequest, wg wgConfig, res *app.SetupStepResult) error {
+	if err := ensureLocalArcZshPrompt(); err != nil {
+		return err
+	}
+	attachWG(res, wg)
+	return nil
+}
+
+func execAddArcAuthorizedKey(req app.SetupStepRequest, wg wgConfig, res *app.SetupStepResult) error {
+	if strings.TrimSpace(req.PubKeyLine) == "" {
+		return fmt.Errorf("missing public key line")
+	}
+	client, err := dialWithPassword(req.BootstrapUser, req.Addr, req.Password)
+	if err != nil {
+		return err
+	}
+	err = ensureArcAuthorizedKey(client, req.UseSudo, req.Password, req.PubKeyLine)
+	_ = client.Close()
+	if err != nil {
+		return err
+	}
+	attachWG(res, wg)
+	return nil
+}
+
+func execVerifyArcSSHLogin(req app.SetupStepRequest, wg wgConfig, res *app.SetupStepResult) error {
+	if err := verifyArcKeyLogin(req.Host, req.Addr); err != nil {
+		return err
+	}
+	if err := ensureArcZshPrompt(req.Addr); err != nil {
+		return err
+	}
+	attachWG(res, wg)
+	return nil
+}
+
+func execVerifyTunnelConnectivity(req app.SetupStepRequest, wg wgConfig, res *app.SetupStepResult) error {
+	if err := execInfraStep(req, wg, res); err != nil {
+		return err
+	}
+	res.ReadyAs = arcUser + "@" + req.Host
+	return nil
 }
 
 func toAppWG(c wgConfig) app.WGConfig {

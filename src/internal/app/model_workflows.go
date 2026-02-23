@@ -2,7 +2,6 @@ package app
 
 import (
 	"arc/components"
-	"arc/internal/workflow"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -23,7 +22,7 @@ func (m model) runSetupStepCmd(index int) tea.Cmd {
 			UseSudo:       m.useSudo,
 			PubKeyLine:    m.pubKeyLine,
 			WG:            m.wg,
-			Index:         index,
+			StepID:        m.steps[index].ID,
 		})
 		if err != nil {
 			msg.err = err
@@ -37,10 +36,6 @@ func (m model) runSetupStepCmd(index int) tea.Cmd {
 	}
 }
 
-func defaultSetupSteps() []setupStep {
-	return workflow.DefaultSetupSteps()
-}
-
 func (m *model) startSetupWorkflow() tea.Cmd {
 	m.phase = phaseLog
 	m.spinnerTick = 0
@@ -48,7 +43,7 @@ func (m *model) startSetupWorkflow() tea.Cmd {
 	m.working = true
 	m.submitted = false
 	m.err = ""
-	m.steps = defaultSetupSteps()
+	m.steps = m.svc.SetupDefinition()
 	if len(m.steps) == 0 {
 		m.working = false
 		m.submitted = true

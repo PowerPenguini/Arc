@@ -16,7 +16,15 @@ const (
 	StepFailed
 )
 
+type StepID string
+
+type StepDef struct {
+	ID    StepID
+	Label string
+}
+
 type Step struct {
+	ID    StepID
 	Label string
 	State StepState
 	Err   string

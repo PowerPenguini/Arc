@@ -57,6 +57,7 @@ ARC setup currently runs these groups:
 ## Core Components
 
 - `src/internal/app` - application orchestration and state model.
+- `src/internal/workflow` - canonical setup step IDs/definitions and validation helpers.
 - `src/app_services.go` - runtime service adapter.
 - `src/ssh_setup.go` - SSH/remote operation helpers.
 - `src/components` - rendering components.
