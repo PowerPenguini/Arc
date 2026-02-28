@@ -179,8 +179,19 @@ func installLocalNFSClient() error {
 		}
 		return nil
 	case "arch", "manjaro":
-		if _, err := execLocal("sudo", "-n", "pacman", "-Sy", "--noconfirm", "nfs-utils"); err != nil {
-			return err
+		// Some Arch/Manjaro systems already have NFS client binaries present
+		// (e.g. from previous/manual install). In that case, skip package install
+		// to avoid failing on unrelated local pacman file-conflict state.
+		if _, err := execLocal("sh", "-lc", "command -v mount.nfs >/dev/null 2>&1 || command -v mount.nfs4 >/dev/null 2>&1"); err == nil {
+			return nil
+		}
+		if _, err := execLocal("sudo", "-n", "pacman", "-S", "--needed", "--noconfirm", "nfs-utils"); err != nil {
+			if _, retryErr := execLocal("sudo", "-n", "pacman", "-Syy", "--needed", "--noconfirm", "nfs-utils"); retryErr != nil {
+				if strings.Contains(strings.ToLower(retryErr.Error()), "conflicting files") {
+					return fmt.Errorf("install nfs-utils failed due to pacman file conflicts; resolve locally with pacman (e.g. inspect conflicts via `sudo pacman -S nfs-utils`), then re-run setup: %w", retryErr)
+				}
+				return fmt.Errorf("install nfs-utils failed (initial: %v; retry with full sync: %w)", err, retryErr)
+			}
 		}
 		return nil
 	default:

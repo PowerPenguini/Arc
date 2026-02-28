@@ -137,12 +137,7 @@ func (m *model) attemptSubmit() tea.Cmd {
 		return nil
 	}
 
-	password := m.pass.ValueString()
-	if strings.TrimSpace(password) == "" {
-		m.err = "Password is required"
-		m.setFocus(1)
-		return nil
-	}
+	password := strings.TrimSpace(m.pass.ValueString())
 
 	m.readyAs = ""
 	m.bootstrapUser = ""

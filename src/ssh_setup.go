@@ -49,17 +49,60 @@ func normalizeSSHAddr(host string) (string, error) {
 }
 
 func dialWithPassword(user, addr, password string) (*ssh.Client, error) {
+	auth, authHint := bootstrapAuthMethods(password)
+	if len(auth) == 0 {
+		return nil, fmt.Errorf("bootstrap auth failed for %s@%s: no usable SSH key and no password provided", user, addr)
+	}
+
 	cfg := &ssh.ClientConfig{
 		User:            user,
-		Auth:            []ssh.AuthMethod{ssh.Password(password)},
+		Auth:            auth,
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 		Timeout:         10 * time.Second,
 	}
 	client, err := ssh.Dial("tcp", addr, cfg)
 	if err != nil {
-		return nil, fmt.Errorf("bootstrap auth failed for %s@%s: %w", user, addr, err)
+		return nil, fmt.Errorf("bootstrap auth failed for %s@%s (%s): %w", user, addr, authHint, err)
 	}
 	return client, nil
+}
+
+func bootstrapAuthMethods(password string) ([]ssh.AuthMethod, string) {
+	auth := make([]ssh.AuthMethod, 0, 2)
+	hints := make([]string, 0, 2)
+
+	signers := bootstrapKeySigners()
+	if len(signers) > 0 {
+		auth = append(auth, ssh.PublicKeys(signers...))
+		hints = append(hints, "ssh-key")
+	}
+
+	if p := strings.TrimSpace(password); p != "" {
+		auth = append(auth, ssh.Password(p))
+		hints = append(hints, "password")
+	}
+
+	return auth, strings.Join(hints, "+")
+}
+
+func bootstrapKeySigners() []ssh.Signer {
+	sshDir := userSSHDir()
+	keyNames := []string{
+		"id_ed25519",
+		"id_ecdsa",
+		"id_rsa",
+		"id_dsa",
+	}
+
+	signers := make([]ssh.Signer, 0, len(keyNames))
+	for _, name := range keyNames {
+		signer, err := readPrivateKeySigner(filepath.Join(sshDir, name))
+		if err != nil {
+			continue
+		}
+		signers = append(signers, signer)
+	}
+	return signers
 }
 
 func canRunPrivileged(bootstrapUser string, client *ssh.Client, password string) (bool, error) {
