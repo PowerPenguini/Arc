@@ -15,6 +15,8 @@ type infraRunContext struct {
 	WG   wgConfig
 }
 
+type localExecFunc func(name string, args ...string) (string, error)
+
 func runInfraStep(ctx infraRunContext, stepID workflow.StepID) error {
 	switch stepID {
 	case workflow.StepInstallServerZsh:
@@ -433,13 +435,23 @@ done
 		return err
 	}
 
-	if _, err := execLocal("systemctl", "--user", "daemon-reload"); err != nil {
+	return activateLocalWaypipeService(execLocal)
+}
+
+func activateLocalWaypipeService(execFn localExecFunc) error {
+	// Import the current desktop session env into the user manager before starting
+	// the persistent tunnel. This is best-effort so setup still succeeds from
+	// shells that don't currently have Wayland variables.
+	_, _ = execFn("systemctl", "--user", "import-environment", "WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS")
+	if _, err := execFn("systemctl", "--user", "daemon-reload"); err != nil {
 		return err
 	}
-	if _, err := execLocal("systemctl", "--user", "enable", "arc-waypipe.service"); err != nil {
+	if _, err := execFn("systemctl", "--user", "enable", "arc-waypipe.service"); err != nil {
 		return err
 	}
-	_, _ = execLocal("systemctl", "--user", "start", "arc-waypipe.service")
+	if _, err := execFn("systemctl", "--user", "restart", "arc-waypipe.service"); err != nil {
+		return err
+	}
 	return nil
 }
 

@@ -90,8 +90,14 @@ func TestArcPromptBlockLocal_ContainsWaypipeAutoForwarding(t *testing.T) {
 	if !strings.Contains(arcPromptBlockLocal, "__arc_waypipe_service_name='arc-waypipe.service'") {
 		t.Fatalf("local prompt block missing waypipe service name")
 	}
-	if !strings.Contains(arcPromptBlockLocal, "systemctl --user start \"$__arc_waypipe_service_name\"") {
-		t.Fatalf("local prompt block missing waypipe service start")
+	if !strings.Contains(arcPromptBlockLocal, "systemctl --user show-environment") {
+		t.Fatalf("local prompt block missing waypipe env health check")
+	}
+	if !strings.Contains(arcPromptBlockLocal, "__arc_waypipe_systemd_env_matches") {
+		t.Fatalf("local prompt block missing waypipe env helper")
+	}
+	if !strings.Contains(arcPromptBlockLocal, "systemctl --user restart \"$__arc_waypipe_service_name\"") {
+		t.Fatalf("local prompt block missing waypipe service restart")
 	}
 	if !strings.Contains(arcPromptBlockLocal, "sw: warning: waypipe service is not active; continuing with plain ssh/tmux") {
 		t.Fatalf("local prompt block missing waypipe fallback warning")

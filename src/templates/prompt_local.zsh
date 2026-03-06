@@ -28,6 +28,17 @@ alias grep='grep --color=auto'
 
 __arc_waypipe_service_name='arc-waypipe.service'
 
+__arc_waypipe_systemd_env_matches() {
+	local __arc_env
+	__arc_env="$(systemctl --user show-environment 2>/dev/null || true)"
+	[[ -n "$__arc_env" ]] || return 1
+	[[ "$__arc_env" == *"WAYLAND_DISPLAY=${WAYLAND_DISPLAY}"* ]] || return 1
+	if [[ -n "${XDG_RUNTIME_DIR-}" ]]; then
+		[[ "$__arc_env" == *"XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR}"* ]] || return 1
+	fi
+	return 0
+}
+
 __arc_waypipe_ensure_active() {
 	# Nothing to do on non-Wayland local terminals.
 	[[ -n "${WAYLAND_DISPLAY-}" ]] || return 0
@@ -45,14 +56,16 @@ __arc_waypipe_ensure_active() {
 	fi
 
 	systemctl --user import-environment WAYLAND_DISPLAY XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS >/dev/null 2>&1 || true
-	if systemctl --user is-active --quiet "$__arc_waypipe_service_name"; then
+	if systemctl --user is-active --quiet "$__arc_waypipe_service_name" && __arc_waypipe_systemd_env_matches; then
 		return 0
 	fi
 
-	systemctl --user start "$__arc_waypipe_service_name" >/dev/null 2>&1 || return 1
+	systemctl --user restart "$__arc_waypipe_service_name" >/dev/null 2>&1 || return 1
 	local __arc_try
 	for __arc_try in 1 2 3; do
-		systemctl --user is-active --quiet "$__arc_waypipe_service_name" && return 0
+		if systemctl --user is-active --quiet "$__arc_waypipe_service_name" && __arc_waypipe_systemd_env_matches; then
+			return 0
+		fi
 		sleep 0.3
 	done
 	return 1
