@@ -134,11 +134,21 @@ for __arc_map in emacs viins vicmd; do
 	bindkey -M "$__arc_map" '^[[3~' delete-char
 	bindkey -M "$__arc_map" '^?' backward-delete-char
 	bindkey -M "$__arc_map" '^H' backward-delete-char
+	bindkey -M "$__arc_map" '^[[1;5D' backward-word
+	bindkey -M "$__arc_map" '^[[5D' backward-word
+	bindkey -M "$__arc_map" '^[[1;5C' forward-word
+	bindkey -M "$__arc_map" '^[[5C' forward-word
 	if [[ -n "${terminfo[kdch1]-}" ]]; then
 		bindkey -M "$__arc_map" "${terminfo[kdch1]}" delete-char
 	fi
 	if [[ -n "${terminfo[kbs]-}" ]]; then
 		bindkey -M "$__arc_map" "${terminfo[kbs]}" backward-delete-char
+	fi
+	if [[ -n "${terminfo[kLFT5]-}" ]]; then
+		bindkey -M "$__arc_map" "${terminfo[kLFT5]}" backward-word
+	fi
+	if [[ -n "${terminfo[kRIT5]-}" ]]; then
+		bindkey -M "$__arc_map" "${terminfo[kRIT5]}" forward-word
 	fi
 done
 unset __arc_map
@@ -199,6 +209,15 @@ __arc_fancy_forward_char() {
 	zle .forward-char
 	__arc_fancy_refresh
 }
+__arc_fancy_forward_word() {
+	if [[ -n "${__arc_hint_text:-}" && "$RBUFFER" == "$__arc_hint_text" ]]; then
+		RBUFFER=""
+		region_highlight=()
+		__arc_hint_text=""
+	fi
+	zle .forward-word
+	__arc_fancy_refresh
+}
 __arc_fancy_backward_char() {
 	if [[ -n "${__arc_hint_text:-}" && "$RBUFFER" == "$__arc_hint_text" ]]; then
 		RBUFFER=""
@@ -208,12 +227,22 @@ __arc_fancy_backward_char() {
 	zle .backward-char
 	__arc_fancy_refresh
 }
+__arc_fancy_backward_word() {
+	if [[ -n "${__arc_hint_text:-}" && "$RBUFFER" == "$__arc_hint_text" ]]; then
+		RBUFFER=""
+		region_highlight=()
+		__arc_hint_text=""
+	fi
+	zle .backward-word
+	__arc_fancy_refresh
+}
 __arc_fancy_redisplay() { __arc_fancy_refresh; zle .redisplay; }
 __arc_fancy_line_init() { __arc_fancy_refresh; }
 
 zle -N self-insert __arc_fancy_self_insert
 zle -N backward-delete-char __arc_fancy_backward_delete
 zle -N backward-char __arc_fancy_backward_char
+zle -N backward-word __arc_fancy_backward_word
 zle -N delete-char __arc_fancy_delete_char
 zle -N kill-word __arc_fancy_kill_word
 zle -N backward-kill-word __arc_fancy_backward_kill_word
@@ -222,6 +251,7 @@ zle -N accept-line __arc_fancy_accept_line
 zle -N redisplay __arc_fancy_redisplay
 zle -N zle-line-init __arc_fancy_line_init
 zle -N forward-char __arc_fancy_forward_char
+zle -N forward-word __arc_fancy_forward_word
 
 __arc_fgc() { printf '%%{\e[38;2;%s;%s;%sm%%}' "$1" "$2" "$3"; }
 __arc_bgc() { printf '%%{\e[48;2;%s;%s;%sm%%}' "$1" "$2" "$3"; }

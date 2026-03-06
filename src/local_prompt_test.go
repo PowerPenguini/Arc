@@ -51,6 +51,35 @@ func TestArcPromptBlocks_ContainSharedHistoryConfig(t *testing.T) {
 	}
 }
 
+func TestArcPromptBlocks_ContainCtrlArrowWordBindings(t *testing.T) {
+	for _, block := range []string{arcPromptBlockLocal, arcPromptBlockRemote} {
+		if !strings.Contains(block, "bindkey -M \"$__arc_map\" '^[[1;5D' backward-word") {
+			t.Fatalf("prompt block missing ctrl-left xterm binding")
+		}
+		if !strings.Contains(block, "bindkey -M \"$__arc_map\" '^[[5D' backward-word") {
+			t.Fatalf("prompt block missing ctrl-left rxvt binding")
+		}
+		if !strings.Contains(block, "bindkey -M \"$__arc_map\" '^[[1;5C' forward-word") {
+			t.Fatalf("prompt block missing ctrl-right xterm binding")
+		}
+		if !strings.Contains(block, "bindkey -M \"$__arc_map\" '^[[5C' forward-word") {
+			t.Fatalf("prompt block missing ctrl-right rxvt binding")
+		}
+		if !strings.Contains(block, "terminfo[kLFT5]") {
+			t.Fatalf("prompt block missing ctrl-left terminfo binding")
+		}
+		if !strings.Contains(block, "terminfo[kRIT5]") {
+			t.Fatalf("prompt block missing ctrl-right terminfo binding")
+		}
+		if !strings.Contains(block, "zle -N backward-word __arc_fancy_backward_word") {
+			t.Fatalf("prompt block missing backward-word widget")
+		}
+		if !strings.Contains(block, "zle -N forward-word __arc_fancy_forward_word") {
+			t.Fatalf("prompt block missing forward-word widget")
+		}
+	}
+}
+
 func TestArcPromptBlockLocal_ContainsWaypipeAutoForwarding(t *testing.T) {
 	if !strings.Contains(arcPromptBlockLocal, "WAYLAND_DISPLAY") {
 		t.Fatalf("local prompt block missing WAYLAND_DISPLAY detection")
