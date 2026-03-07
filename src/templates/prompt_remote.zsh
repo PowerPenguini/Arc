@@ -185,16 +185,24 @@ __arc_fancy_refresh() {
 
 __arc_fancy_self_insert() { zle .self-insert; __arc_fancy_refresh; }
 __arc_fancy_backward_delete() { zle .backward-delete-char; __arc_fancy_refresh; }
-__arc_fancy_delete_char() { zle .delete-char; __arc_fancy_refresh; }
+__arc_fancy_clear_hint() {
+	if [[ -n "${__arc_hint_text:-}" && "$RBUFFER" == "$__arc_hint_text" ]]; then
+		RBUFFER=""
+		region_highlight=()
+		__arc_hint_text=""
+	fi
+}
+__arc_fancy_delete_char() {
+	# Delete should not accept or edit the visible history hint.
+	__arc_fancy_clear_hint
+	zle .delete-char
+	__arc_fancy_refresh
+}
 __arc_fancy_kill_word() { zle .kill-word; __arc_fancy_refresh; }
 __arc_fancy_backward_kill_word() { zle .backward-kill-word; __arc_fancy_refresh; }
 __arc_fancy_transpose_words() { zle .transpose-words; __arc_fancy_refresh; }
 __arc_fancy_accept_line() {
-	if [[ -n "${__arc_hint_text:-}" && "$RBUFFER" == "$__arc_hint_text" ]]; then
-		RBUFFER=""
-	fi
-	region_highlight=()
-	__arc_hint_text=""
+	__arc_fancy_clear_hint
 	zle .accept-line
 }
 __arc_fancy_forward_char() {
@@ -210,29 +218,17 @@ __arc_fancy_forward_char() {
 	__arc_fancy_refresh
 }
 __arc_fancy_forward_word() {
-	if [[ -n "${__arc_hint_text:-}" && "$RBUFFER" == "$__arc_hint_text" ]]; then
-		RBUFFER=""
-		region_highlight=()
-		__arc_hint_text=""
-	fi
+	__arc_fancy_clear_hint
 	zle .forward-word
 	__arc_fancy_refresh
 }
 __arc_fancy_backward_char() {
-	if [[ -n "${__arc_hint_text:-}" && "$RBUFFER" == "$__arc_hint_text" ]]; then
-		RBUFFER=""
-		region_highlight=()
-		__arc_hint_text=""
-	fi
+	__arc_fancy_clear_hint
 	zle .backward-char
 	__arc_fancy_refresh
 }
 __arc_fancy_backward_word() {
-	if [[ -n "${__arc_hint_text:-}" && "$RBUFFER" == "$__arc_hint_text" ]]; then
-		RBUFFER=""
-		region_highlight=()
-		__arc_hint_text=""
-	fi
+	__arc_fancy_clear_hint
 	zle .backward-word
 	__arc_fancy_refresh
 }

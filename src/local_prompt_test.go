@@ -80,6 +80,17 @@ func TestArcPromptBlocks_ContainCtrlArrowWordBindings(t *testing.T) {
 	}
 }
 
+func TestArcPromptBlocks_ClearVisibleHintBeforeDelete(t *testing.T) {
+	for _, block := range []string{arcPromptBlockLocal, arcPromptBlockRemote} {
+		if !strings.Contains(block, "__arc_fancy_clear_hint()") {
+			t.Fatalf("prompt block missing hint clearing helper")
+		}
+		if !strings.Contains(block, "__arc_fancy_delete_char() {\n\t# Delete should not accept or edit the visible history hint.\n\t__arc_fancy_clear_hint\n\tzle .delete-char\n\t__arc_fancy_refresh\n}") {
+			t.Fatalf("prompt block missing guarded delete-char widget")
+		}
+	}
+}
+
 func TestArcPromptBlockLocal_ContainsWaypipeAutoForwarding(t *testing.T) {
 	if !strings.Contains(arcPromptBlockLocal, "WAYLAND_DISPLAY") {
 		t.Fatalf("local prompt block missing WAYLAND_DISPLAY detection")
