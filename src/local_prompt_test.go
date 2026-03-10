@@ -140,11 +140,31 @@ func TestArcTmuxBlockRemote_ContainsWaylandEnvPropagation(t *testing.T) {
 	if !strings.Contains(arcTmuxBlockRemote, "update-environment") {
 		t.Fatalf("remote tmux block missing update-environment setting")
 	}
+	if !strings.Contains(arcTmuxBlockRemote, "COLORTERM") {
+		t.Fatalf("remote tmux block missing COLORTERM propagation")
+	}
 	if !strings.Contains(arcTmuxBlockRemote, "WAYLAND_DISPLAY") {
 		t.Fatalf("remote tmux block missing WAYLAND_DISPLAY propagation")
 	}
 	if !strings.Contains(arcTmuxBlockRemote, "XDG_RUNTIME_DIR") {
 		t.Fatalf("remote tmux block missing XDG_RUNTIME_DIR propagation")
+	}
+}
+
+func TestArcTmuxBlockRemote_EnablesTruecolor(t *testing.T) {
+	if !strings.Contains(arcTmuxBlockRemote, `default-terminal "tmux-256color"`) {
+		t.Fatalf("remote tmux block missing tmux-256color default terminal")
+	}
+	for _, term := range []string{"xterm-256color:RGB", "tmux-256color:RGB", "screen-256color:RGB"} {
+		if !strings.Contains(arcTmuxBlockRemote, term) {
+			t.Fatalf("remote tmux block missing RGB terminal feature for %s", term)
+		}
+	}
+}
+
+func TestArcPromptBlockLocal_SeedsTruecolorForRemoteTmux(t *testing.T) {
+	if !strings.Contains(arcPromptBlockLocal, "env TERM=${__arc_tmux_term} COLORTERM=truecolor tmux new-session -A -D -s ${__arc_tmux_session}") {
+		t.Fatalf("local prompt block missing truecolor tmux launch command")
 	}
 }
 

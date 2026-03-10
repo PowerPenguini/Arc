@@ -15,7 +15,7 @@ __arc_sw_connect() {
 	# Fast dead-link detection for the real session so disconnects don't "hang" for long.
 	local __arc_ssh_run_opts=(-q -o LogLevel=QUIET -o ServerAliveInterval=2 -o ServerAliveCountMax=1 -o TCPKeepAlive=yes)
 	local __arc_tmux_term='xterm-256color'
-	local __arc_ssh_cmd="env TERM=${__arc_tmux_term} tmux new-session -A -D -s ${__arc_tmux_session}"
+	local __arc_ssh_cmd="env TERM=${__arc_tmux_term} COLORTERM=truecolor tmux new-session -A -D -s ${__arc_tmux_session}"
 	local __arc_last_err=""
 
 	if ssh "${__arc_ssh_probe_opts[@]}" arc@remotehost true >/dev/null 2>&1; then
