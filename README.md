@@ -46,6 +46,15 @@ ARC is a seamless server-client workflow tool where the local machine is treated
   - ARC installs managed `~/.tmux.conf` block (mouse on, scroll bindings, hidden status line),
   - ARC-specific tmux keybinds are configured during setup.
 
+- Experimental Wayland/clipboard helpers:
+  - local prompt exposes `wp-status`, `wp-restart`, `wp-stop`, `clip-status`, `clip-restart`,
+  - remote prompt exposes `clipd-status`, `clipd-restart`, and `cw` (`codex-wayland` wrapper),
+  - clipboard image sync can forward local image clipboard contents to the remote ARC session.
+
+## Experimental Features Warning
+
+This project is experimental. Use it at your own risk.
+
 ## Setup Workflow (High Level)
 
 ARC setup currently runs these groups:
