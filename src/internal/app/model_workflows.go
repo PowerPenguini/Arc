@@ -20,7 +20,6 @@ func (m model) runSetupStepCmd(index int) tea.Cmd {
 			Addr:          m.addr,
 			Password:      m.password,
 			UseSudo:       m.useSudo,
-			PubKeyLine:    m.pubKeyLine,
 			WG:            m.wg,
 			StepID:        m.steps[index].ID,
 		})
@@ -29,7 +28,6 @@ func (m model) runSetupStepCmd(index int) tea.Cmd {
 			return msg
 		}
 		msg.useSudo = res.UseSudo
-		msg.pubKeyLine = res.PubKeyLine
 		msg.readyAs = res.ReadyAs
 		msg.wg = res.WG
 		return msg

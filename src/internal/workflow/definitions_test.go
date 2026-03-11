@@ -4,13 +4,13 @@ import "testing"
 
 func TestDefaultSetupSteps_OrderAndCount(t *testing.T) {
 	steps := DefaultSetupSteps()
-	if len(steps) != 34 {
-		t.Fatalf("expected 34 setup steps, got %d", len(steps))
+	if len(steps) != 31 {
+		t.Fatalf("expected 31 setup steps, got %d", len(steps))
 	}
 	if steps[0].ID != StepDetectPrivilegedMode {
 		t.Fatalf("unexpected first step ID: %q", steps[0].ID)
 	}
-	if steps[len(steps)-1].ID != StepConfigureLocalWaypipe {
+	if steps[len(steps)-1].ID != StepConfigureImageClipboard {
 		t.Fatalf("unexpected last step ID: %q", steps[len(steps)-1].ID)
 	}
 
@@ -31,11 +31,10 @@ func TestDefaultSetupSteps_OrderAndCount(t *testing.T) {
 	}
 
 	// Bootstrap key auth for arc must be in place before any remote infra step that dials as arc.
-	assertBefore(StepEnsureLocalSSHKey, StepAddArcAuthorizedKey)
-	assertBefore(StepAddArcAuthorizedKey, StepInstallServerZsh)
-	assertBefore(StepAddArcAuthorizedKey, StepInstallServerWireGuard)
-	assertBefore(StepAddArcAuthorizedKey, StepInstallServerArcZshPrompt)
-	assertBefore(StepAddArcAuthorizedKey, StepInstallServerArcTmux)
+	assertBefore(StepEnsureArcSSHAccess, StepConfigureServerZsh)
+	assertBefore(StepEnsureArcSSHAccess, StepInstallServerWireGuard)
+	assertBefore(StepEnsureArcSSHAccess, StepInstallServerArcZshPrompt)
+	assertBefore(StepEnsureArcSSHAccess, StepInstallServerArcTmux)
 
 	// Keep core workflow ordering guarantees.
 	assertBefore(StepEnableServerWG, StepEnableLocalWG)
@@ -43,6 +42,8 @@ func TestDefaultSetupSteps_OrderAndCount(t *testing.T) {
 	assertBefore(StepVerifyTunnelConnectivity, StepResolveArcUIDGID)
 	assertBefore(StepVerifyLocalArcNFSMount, StepConfigureRemoteWaypipe)
 	assertBefore(StepConfigureRemoteWaypipe, StepConfigureLocalWaypipe)
+	assertBefore(StepConfigureLocalWaypipe, StepConfigureClipboardComp)
+	assertBefore(StepConfigureClipboardComp, StepConfigureImageClipboard)
 }
 
 func TestSetupStepDefinitions_ValidAndUnique(t *testing.T) {
@@ -57,8 +58,8 @@ func TestSetupStepDefinitions_ValidAndUnique(t *testing.T) {
 		}
 		seen[def.ID] = struct{}{}
 	}
-	if len(seen) != 34 {
-		t.Fatalf("expected 34 unique step IDs, got %d", len(seen))
+	if len(seen) != 31 {
+		t.Fatalf("expected 31 unique step IDs, got %d", len(seen))
 	}
 }
 

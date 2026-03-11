@@ -3,6 +3,11 @@
 # Requires a font with powerline/nerd glyphs.
 [[ -o interactive ]] || return
 
+case ":$PATH:" in
+*":$HOME/.local/bin:"*) ;;
+*) export PATH="$HOME/.local/bin:$PATH" ;;
+esac
+
 # Shared history across local/server via NFS.
 HISTFILE=/home/arc/.zsh_history_shared
 HISTSIZE=200000
@@ -84,6 +89,15 @@ wp-stop() {
 	systemctl --user stop "$__arc_waypipe_service_name"
 }
 
+clip-status() {
+	systemctl --user status --no-pager arc-clipboard-sync.service
+}
+
+clip-restart() {
+	systemctl --user import-environment WAYLAND_DISPLAY XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS >/dev/null 2>&1 || true
+	systemctl --user restart arc-clipboard-sync.service
+}
+
 __arc_sw_connect() {
 	local __arc_tmux_session="${1:-arc}"
 	if [[ ! "$__arc_tmux_session" =~ ^[A-Za-z0-9._-]+$ ]]; then
@@ -102,9 +116,7 @@ __arc_sw_connect() {
 	# GUI forwarding should not depend on a specific terminal tab/session:
 	# ensure the persistent waypipe user service is up before connecting.
 	if [[ -n "${WAYLAND_DISPLAY-}" ]]; then
-		if ! __arc_waypipe_ensure_active; then
-			printf 'sw: warning: waypipe service is not active; continuing with plain ssh/tmux\n' >&2
-		fi
+		__arc_waypipe_ensure_active || true
 	fi
 
 	if ssh "${__arc_ssh_probe_opts[@]}" arc@remotehost true >/dev/null 2>&1; then

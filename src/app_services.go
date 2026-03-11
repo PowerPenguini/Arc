@@ -4,7 +4,6 @@ import (
 	"arc/internal/app"
 	"arc/internal/workflow"
 	"fmt"
-	"path/filepath"
 	"strings"
 	"sync"
 )
@@ -25,24 +24,19 @@ var runtimeStepExecutors = map[workflow.StepID]stepExecutor{
 	workflow.StepCreateArcHushlogin:         execCreateArcHushlogin,
 	workflow.StepInstallServerArcZshPrompt:  execInstallServerArcZshPrompt,
 	workflow.StepInstallServerArcTmux:       execInstallServerArcTmux,
-	workflow.StepInstallServerZsh:           execInfraStep,
-	workflow.StepSetServerDefaultShell:      execInfraStep,
-	workflow.StepDetectServerOS:             execInfraStep,
+	workflow.StepConfigureServerZsh:         execInfraStep,
 	workflow.StepInstallServerWireGuard:     execInfraStep,
 	workflow.StepWriteServerWGConf:          execInfraStep,
 	workflow.StepOpenServerFirewall:         execInfraStep,
 	workflow.StepEnableServerWG:             execInfraStep,
 	workflow.StepApplyServerNFTables:        execInfraStep,
 	workflow.StepAddLocalHostsAliases:       execAddLocalHostsAliases,
-	workflow.StepEnsureLocalSSHKey:          execEnsureLocalSSHKey,
+	workflow.StepEnsureArcSSHAccess:         execEnsureArcSSHAccess,
 	workflow.StepInstallLocalArcPrompt:      execInstallLocalArcPrompt,
-	workflow.StepInstallLocalZsh:            execInfraStep,
-	workflow.StepSetLocalDefaultShell:       execInfraStep,
-	workflow.StepDetectLocalOS:              execInfraStep,
+	workflow.StepConfigureLocalZsh:          execInfraStep,
 	workflow.StepInstallLocalWireGuard:      execInfraStep,
 	workflow.StepWriteLocalWGConf:           execInfraStep,
 	workflow.StepEnableLocalWG:              execInfraStep,
-	workflow.StepAddArcAuthorizedKey:        execAddArcAuthorizedKey,
 	workflow.StepVerifyArcSSHLogin:          execVerifyArcSSHLogin,
 	workflow.StepVerifyTunnelConnectivity:   execVerifyTunnelConnectivity,
 	workflow.StepResolveArcUIDGID:           execInfraStep,
@@ -53,6 +47,8 @@ var runtimeStepExecutors = map[workflow.StepID]stepExecutor{
 	workflow.StepVerifyLocalArcNFSMount:     execInfraStep,
 	workflow.StepConfigureRemoteWaypipe:     execInfraStep,
 	workflow.StepConfigureLocalWaypipe:      execInfraStep,
+	workflow.StepConfigureClipboardComp:     execInfraStep,
+	workflow.StepConfigureImageClipboard:    execInfraStep,
 }
 
 func newRuntimeServices() app.Services { return runtimeServices{} }
@@ -207,39 +203,29 @@ func execAddLocalHostsAliases(req app.SetupStepRequest, _ wgConfig, _ *app.Setup
 	return ensureLocalArcHostsAliases(req.Host)
 }
 
-func execEnsureLocalSSHKey(_ app.SetupStepRequest, wg wgConfig, res *app.SetupStepResult) error {
+func execEnsureArcSSHAccess(req app.SetupStepRequest, wg wgConfig, res *app.SetupStepResult) error {
 	if err := ensureLocalSSHKeyPair(); err != nil {
 		return err
 	}
-	pubPath := filepath.Join(userSSHDir(), "id_ed25519.pub")
-	pubKeyLine, err := readPublicKeyLine(pubPath)
+	pubKeyLine, err := readPublicKeyLine(userSSHPublicKeyPath())
 	if err != nil {
 		return err
 	}
-	res.PubKeyLine = pubKeyLine
+	client, err := dialWithPassword(req.BootstrapUser, req.Addr, req.Password)
+	if err != nil {
+		return err
+	}
+	err = ensureArcAuthorizedKey(client, req.UseSudo, req.Password, pubKeyLine)
+	_ = client.Close()
+	if err != nil {
+		return err
+	}
 	attachWG(res, wg)
 	return nil
 }
 
 func execInstallLocalArcPrompt(_ app.SetupStepRequest, wg wgConfig, res *app.SetupStepResult) error {
 	if err := ensureLocalArcZshPrompt(); err != nil {
-		return err
-	}
-	attachWG(res, wg)
-	return nil
-}
-
-func execAddArcAuthorizedKey(req app.SetupStepRequest, wg wgConfig, res *app.SetupStepResult) error {
-	if strings.TrimSpace(req.PubKeyLine) == "" {
-		return fmt.Errorf("missing public key line")
-	}
-	client, err := dialWithPassword(req.BootstrapUser, req.Addr, req.Password)
-	if err != nil {
-		return err
-	}
-	err = ensureArcAuthorizedKey(client, req.UseSudo, req.Password, req.PubKeyLine)
-	_ = client.Close()
-	if err != nil {
 		return err
 	}
 	attachWG(res, wg)

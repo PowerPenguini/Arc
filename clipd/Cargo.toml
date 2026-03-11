@@ -1,0 +1,13 @@
+[package]
+name = "arc-clipd"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+wayland-backend = "0.3.14"
+wayland-server = "0.31.12"
+wayland-protocols = { version = "0.32.11", features = ["server", "staging"] }
+wayland-protocols-wlr = { version = "0.3.11", features = ["server"] }
+
+[patch.crates-io]
+wayland-server = { path = "vendor/wayland-server" }

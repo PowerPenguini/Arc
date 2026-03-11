@@ -58,10 +58,10 @@ ARC setup currently runs these groups:
 
 - `src/internal/app` - application orchestration and state model.
 - `src/internal/workflow` - canonical setup step IDs/definitions and validation helpers.
-- `src/app_services.go` - runtime service adapter.
+- `src/app_services.go` - runtime service adapter that bridges UI workflow steps to concrete handlers.
+- `src/infra_*.go` - provisioning handlers split by subsystem (`shell`, `wireguard`, shared package/runtime helpers, and handler registry).
+- `src/clipboard_flow.go` - clipboard compositor provisioning, local sync setup, and remote binary upload helpers.
 - `src/ssh_setup.go` - SSH/remote operation helpers.
+- `src/nfs_flow.go` and `src/remote_nftables.go` - filesystem/export setup and network redirect provisioning.
+- `clipd/` - Rust Wayland clipboard sidecar built during clipboard provisioning.
 - `src/components` - rendering components.
-
-## Notes
-
-- `DefaultLocalSteps` and `DefaultInfraSteps` are retained as fallback definitions.

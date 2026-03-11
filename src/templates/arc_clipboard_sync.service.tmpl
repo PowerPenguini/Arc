@@ -1,0 +1,15 @@
+[Unit]
+Description=ARC image clipboard sync to remote Weston
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=-%h/.config/arc/clipboard-sync.env
+ExecStart=%h/.local/bin/arc-clipboard-sync
+Restart=always
+RestartSec=2
+StartLimitIntervalSec=0
+
+[Install]
+WantedBy=default.target

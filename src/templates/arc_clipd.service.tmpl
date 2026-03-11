@@ -1,0 +1,14 @@
+[Unit]
+Description=ARC clipboard compositor sidecar
+After=default.target
+
+[Service]
+Type=simple
+EnvironmentFile=-%h/.config/arc/clipd.env
+ExecStart=/bin/sh -lc '. %h/.config/arc/clipd.env 2>/dev/null || true; exec %h/.local/bin/arc-clipd --socket "${ARC_CLIPD_DISPLAY:-arc-clipd-0}" --seat "${ARC_CLIPD_SEAT:-seat0}"'
+Restart=always
+RestartSec=2
+StartLimitIntervalSec=0
+
+[Install]
+WantedBy=default.target

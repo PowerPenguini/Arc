@@ -28,10 +28,9 @@ type setupStepDoneMsg struct {
 	index int
 	err   error
 
-	useSudo    *bool
-	pubKeyLine string
-	readyAs    string
-	wg         *WGConfig
+	useSudo *bool
+	readyAs string
+	wg      *WGConfig
 }
 
 type spinnerTickMsg struct{}
@@ -68,7 +67,6 @@ type model struct {
 	addr          string
 	password      string
 	useSudo       bool
-	pubKeyLine    string
 
 	steps       []setupStep
 	spinnerTick int
@@ -145,7 +143,6 @@ func (m *model) attemptSubmit() tea.Cmd {
 	m.addr = ""
 	m.password = ""
 	m.useSudo = false
-	m.pubKeyLine = ""
 	m.steps = nil
 	m.spinnerTick = 0
 	m.logScroll = 0

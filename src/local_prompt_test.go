@@ -36,6 +36,9 @@ func TestEnsureLocalArcZshPrompt_CreatesFiles(t *testing.T) {
 
 func TestArcPromptBlocks_ContainSharedHistoryConfig(t *testing.T) {
 	for _, block := range []string{arcPromptBlockLocal, arcPromptBlockRemote} {
+		if !strings.Contains(block, `export PATH="$HOME/.local/bin:$PATH"`) {
+			t.Fatalf("prompt block missing ~/.local/bin PATH bootstrap")
+		}
 		if !strings.Contains(block, "HISTFILE=/home/arc/.zsh_history_shared") {
 			t.Fatalf("prompt block missing shared HISTFILE")
 		}
@@ -110,11 +113,17 @@ func TestArcPromptBlockLocal_ContainsWaypipeAutoForwarding(t *testing.T) {
 	if !strings.Contains(arcPromptBlockLocal, "systemctl --user restart \"$__arc_waypipe_service_name\"") {
 		t.Fatalf("local prompt block missing waypipe service restart")
 	}
-	if !strings.Contains(arcPromptBlockLocal, "sw: warning: waypipe service is not active; continuing with plain ssh/tmux") {
-		t.Fatalf("local prompt block missing waypipe fallback warning")
+	if !strings.Contains(arcPromptBlockLocal, "__arc_waypipe_ensure_active || true") {
+		t.Fatalf("local prompt block missing quiet waypipe activation")
 	}
 	if !strings.Contains(arcPromptBlockLocal, "ARC_WAYPIPE_HINT_ONCE") {
 		t.Fatalf("local prompt block missing one-time waypipe hint guard")
+	}
+	if !strings.Contains(arcPromptBlockLocal, "clip-status()") {
+		t.Fatalf("local prompt block missing clipboard sync status helper")
+	}
+	if !strings.Contains(arcPromptBlockLocal, "arc-clipboard-sync.service") {
+		t.Fatalf("local prompt block missing clipboard sync service controls")
 	}
 }
 
@@ -133,6 +142,67 @@ func TestArcPromptBlockRemote_ContainsWaypipeRuntimeSetup(t *testing.T) {
 	}
 	if !strings.Contains(arcPromptBlockRemote, "CHROMIUM_FLAGS") {
 		t.Fatalf("remote prompt block missing Chromium Wayland flags")
+	}
+	if !strings.Contains(arcPromptBlockRemote, "clipd-status()") {
+		t.Fatalf("remote prompt block missing clipd status helper")
+	}
+	if !strings.Contains(arcPromptBlockRemote, "codex-wayland") {
+		t.Fatalf("remote prompt block missing codex-wayland helper")
+	}
+}
+
+func TestArcTemplates_ContainClipboardServices(t *testing.T) {
+	clipdService, err := renderTemplateFile("templates/arc_clipd.service.tmpl", map[string]string{})
+	if err != nil {
+		t.Fatalf("render clipd service: %v", err)
+	}
+	if !strings.Contains(clipdService, "arc-clipd.service") && !strings.Contains(clipdService, "clipboard compositor sidecar") {
+		t.Fatalf("clipd service template missing identifying text")
+	}
+	if !strings.Contains(clipdService, "--socket \"${ARC_CLIPD_DISPLAY:-arc-clipd-0}\"") {
+		t.Fatalf("clipd service template missing socket selection")
+	}
+
+	syncService, err := renderTemplateFile("templates/arc_clipboard_sync.service.tmpl", map[string]string{})
+	if err != nil {
+		t.Fatalf("render clipboard sync service: %v", err)
+	}
+	if !strings.Contains(syncService, "arc-clipboard-sync") {
+		t.Fatalf("clipboard sync template missing helper ExecStart")
+	}
+	if !strings.Contains(syncService, "clipboard-sync.env") {
+		t.Fatalf("clipboard sync template missing env file")
+	}
+}
+
+func TestRemoteWestonProvisioning_ContainsRobustCodexWrapper(t *testing.T) {
+	if !strings.Contains(mustTemplateFile("templates/prompt_remote.zsh"), "codex-wayland") {
+		t.Fatalf("remote prompt template should expose codex-wayland")
+	}
+	if !strings.Contains(arcPromptBlockRemote, "clipd-restart()") {
+		t.Fatalf("remote prompt block missing clipd restart helper")
+	}
+	remoteProvisioning := mustTemplateFile("templates/prompt_remote.zsh")
+	if !strings.Contains(remoteProvisioning, "cw()") {
+		t.Fatalf("remote prompt template should expose cw alias")
+	}
+}
+
+func TestRemoteCodexWrapperForcesWaylandSession(t *testing.T) {
+	src, err := os.ReadFile("clipboard_flow.go")
+	if err != nil {
+		t.Fatalf("read clipboard_flow.go: %v", err)
+	}
+	text := string(src)
+	for _, snippet := range []string{
+		`unset DISPLAY`,
+		`export XDG_SESSION_TYPE=wayland`,
+		`export OZONE_PLATFORM=wayland`,
+		`export ELECTRON_OZONE_PLATFORM_HINT=wayland`,
+	} {
+		if !strings.Contains(text, snippet) {
+			t.Fatalf("codex wrapper should contain %q", snippet)
+		}
 	}
 }
 

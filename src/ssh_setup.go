@@ -282,6 +282,10 @@ func userSSHDir() string {
 	return filepath.Join(home, ".ssh")
 }
 
+func userSSHPublicKeyPath() string {
+	return filepath.Join(userSSHDir(), "id_ed25519.pub")
+}
+
 func ensureLocalSSHKeyPair() error {
 	sshDir := userSSHDir()
 	privPath := filepath.Join(sshDir, "id_ed25519")

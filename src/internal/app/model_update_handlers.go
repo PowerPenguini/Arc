@@ -54,9 +54,6 @@ func (m model) handleSetupStepDone(msg setupStepDoneMsg) (tea.Model, tea.Cmd) {
 	if msg.useSudo != nil {
 		m.useSudo = *msg.useSudo
 	}
-	if msg.pubKeyLine != "" {
-		m.pubKeyLine = msg.pubKeyLine
-	}
 	if msg.readyAs != "" {
 		m.readyAs = msg.readyAs
 	}
@@ -319,6 +316,5 @@ func (m *model) resetRemotePhaseState() {
 	m.addr = ""
 	m.password = ""
 	m.useSudo = false
-	m.pubKeyLine = ""
 	m.setFocus(0)
 }

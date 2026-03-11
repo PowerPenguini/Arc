@@ -3,6 +3,11 @@
 # Requires a font with powerline/nerd glyphs.
 [[ -o interactive ]] || return
 
+case ":$PATH:" in
+*":$HOME/.local/bin:"*) ;;
+*) export PATH="$HOME/.local/bin:$PATH" ;;
+esac
+
 if [[ -f "$HOME/.config/arc/waypipe.env" ]]; then
 	. "$HOME/.config/arc/waypipe.env"
 elif [[ -z "${XDG_RUNTIME_DIR-}" || ! -d "$XDG_RUNTIME_DIR" ]]; then
@@ -55,6 +60,18 @@ alias ll='ls -lah --color=auto'
 alias la='ls -A --color=auto'
 alias l='ls -CF --color=auto'
 alias grep='grep --color=auto'
+
+clipd-status() {
+	systemctl --user status --no-pager arc-clipd.service
+}
+
+clipd-restart() {
+	systemctl --user restart arc-clipd.service
+}
+
+cw() {
+	codex-wayland "$@"
+}
 
 # sw: on remote, quickly leave the current SSH session.
 sw() {

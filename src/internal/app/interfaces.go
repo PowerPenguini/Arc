@@ -19,16 +19,14 @@ type SetupStepRequest struct {
 	Addr          string
 	Password      string
 	UseSudo       bool
-	PubKeyLine    string
 	WG            WGConfig
 	StepID        workflow.StepID
 }
 
 type SetupStepResult struct {
-	UseSudo    *bool
-	PubKeyLine string
-	ReadyAs    string
-	WG         *WGConfig
+	UseSudo *bool
+	ReadyAs string
+	WG      *WGConfig
 }
 
 type Services interface {
