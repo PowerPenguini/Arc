@@ -65,6 +65,10 @@ x() {
 	return 1
 }
 
+codex() {
+	codex-wayland "$@"
+}
+
 __arc_fgc() { printf '\[\e[38;2;%s;%s;%sm\]' "$1" "$2" "$3"; }
 __arc_bgc() { printf '\[\e[48;2;%s;%s;%sm\]' "$1" "$2" "$3"; }
 __arc_rst='\[\e[0m\]'

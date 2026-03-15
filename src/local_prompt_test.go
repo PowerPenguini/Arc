@@ -26,8 +26,14 @@ func TestEnsureLocalArcZshPrompt_CreatesFiles(t *testing.T) {
 	if !strings.Contains(rc, "ARC AUTO SSH (local)") {
 		t.Fatalf(".zshrc missing ARC AUTO SSH block")
 	}
-	if !strings.Contains(rc, "HISTFILE=/home/arc/.zsh_history_shared") {
-		t.Fatalf(".zshrc missing shared history file")
+	if strings.Contains(rc, "pub.remotehost") {
+		t.Fatalf(".zshrc should not reference pub.remotehost")
+	}
+	if !strings.Contains(rc, `HISTFILE="$__arc_state_dir/.zsh_history_local"`) {
+		t.Fatalf(".zshrc missing local history fallback")
+	}
+	if !strings.Contains(rc, "if __arc_vpn_path_healthy; then") || !strings.Contains(rc, "HISTFILE=/home/arc/.zsh_history_shared") {
+		t.Fatalf(".zshrc missing conditional shared history selection")
 	}
 	if !strings.Contains(rc, "setopt SHARE_HISTORY") {
 		t.Fatalf(".zshrc missing SHARE_HISTORY option")
@@ -39,8 +45,8 @@ func TestArcPromptBlocks_ContainSharedHistoryConfig(t *testing.T) {
 		if !strings.Contains(block, `export PATH="$HOME/.local/bin:$PATH"`) {
 			t.Fatalf("prompt block missing ~/.local/bin PATH bootstrap")
 		}
-		if !strings.Contains(block, "HISTFILE=/home/arc/.zsh_history_shared") {
-			t.Fatalf("prompt block missing shared HISTFILE")
+		if !strings.Contains(block, "HISTFILE=/home/arc/.zsh_history_shared") && !strings.Contains(block, `HISTFILE="$__arc_state_dir/.zsh_history_local"`) {
+			t.Fatalf("prompt block missing history file configuration")
 		}
 		if !strings.Contains(block, "setopt SHARE_HISTORY") {
 			t.Fatalf("prompt block missing SHARE_HISTORY")
@@ -51,6 +57,19 @@ func TestArcPromptBlocks_ContainSharedHistoryConfig(t *testing.T) {
 		if !strings.Contains(block, "setopt NO_HIST_SAVE_BY_COPY") {
 			t.Fatalf("prompt block missing NO_HIST_SAVE_BY_COPY")
 		}
+	}
+
+	if !strings.Contains(arcPromptBlockLocal, "if __arc_vpn_path_healthy; then") {
+		t.Fatalf("local prompt block missing VPN-gated shared history")
+	}
+	if strings.Contains(arcPromptBlockLocal, "pub.remotehost") {
+		t.Fatalf("local prompt block should not reference pub.remotehost")
+	}
+	if !strings.Contains(arcPromptBlockLocal, `HISTFILE="$__arc_state_dir/.zsh_history_local"`) {
+		t.Fatalf("local prompt block missing local history fallback")
+	}
+	if !strings.Contains(arcPromptBlockRemote, "HISTFILE=/home/arc/.zsh_history_shared") {
+		t.Fatalf("remote prompt block missing shared HISTFILE")
 	}
 }
 
@@ -116,6 +135,9 @@ func TestArcPromptBlockLocal_ContainsWaypipeAutoForwarding(t *testing.T) {
 	if !strings.Contains(arcPromptBlockLocal, "__arc_waypipe_ensure_active || true") {
 		t.Fatalf("local prompt block missing quiet waypipe activation")
 	}
+	if strings.Contains(arcPromptBlockLocal, "cannot reach remotehost or pub.remotehost") {
+		t.Fatalf("local prompt block should not keep public fallback errors")
+	}
 	if !strings.Contains(arcPromptBlockLocal, "ARC_WAYPIPE_HINT_ONCE") {
 		t.Fatalf("local prompt block missing one-time waypipe hint guard")
 	}
@@ -148,6 +170,9 @@ func TestArcPromptBlockRemote_ContainsWaypipeRuntimeSetup(t *testing.T) {
 	}
 	if !strings.Contains(arcPromptBlockRemote, "codex-wayland") {
 		t.Fatalf("remote prompt block missing codex-wayland helper")
+	}
+	if !strings.Contains(arcPromptBlockRemote, "codex()") {
+		t.Fatalf("remote prompt block missing codex wrapper")
 	}
 }
 
@@ -183,6 +208,9 @@ func TestRemoteWestonProvisioning_ContainsRobustCodexWrapper(t *testing.T) {
 		t.Fatalf("remote prompt block missing clipd restart helper")
 	}
 	remoteProvisioning := mustTemplateFile("templates/prompt_remote.zsh")
+	if !strings.Contains(remoteProvisioning, "codex()") {
+		t.Fatalf("remote prompt template should expose codex wrapper")
+	}
 	if !strings.Contains(remoteProvisioning, "cw()") {
 		t.Fatalf("remote prompt template should expose cw alias")
 	}

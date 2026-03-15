@@ -2,34 +2,9 @@ package main
 
 import (
 	"fmt"
-	"net"
 	"os"
 	"strings"
 )
-
-func resolveHostToIP(host string) (string, error) {
-	h := strings.TrimSpace(host)
-	if h == "" {
-		return "", fmt.Errorf("host is empty")
-	}
-	if ip := net.ParseIP(h); ip != nil {
-		return h, nil
-	}
-	ips, err := net.LookupIP(h)
-	if err != nil {
-		return "", fmt.Errorf("dns lookup failed for %q: %w", h, err)
-	}
-	if len(ips) == 0 {
-		return "", fmt.Errorf("dns lookup returned no IPs for %q", h)
-	}
-	// Prefer IPv4 to keep /etc/hosts simple.
-	for _, ip := range ips {
-		if v4 := ip.To4(); v4 != nil {
-			return v4.String(), nil
-		}
-	}
-	return ips[0].String(), nil
-}
 
 func ensureLocalHostsMappings(m map[string]string) error {
 	hostsRaw, err := execLocal("sudo", "-n", "cat", "/etc/hosts")
@@ -76,14 +51,8 @@ func ensureLocalHostsMappings(m map[string]string) error {
 	if ip := strings.TrimSpace(m["rh"]); ip != "" {
 		out = append(out, fmt.Sprintf("%s\trh", ip))
 	}
-	if ip := strings.TrimSpace(m["pub.rh"]); ip != "" {
-		out = append(out, fmt.Sprintf("%s\tpub.rh", ip))
-	}
 	if ip := strings.TrimSpace(m["remotehost"]); ip != "" {
 		out = append(out, fmt.Sprintf("%s\tremotehost", ip))
-	}
-	if ip := strings.TrimSpace(m["pub.remotehost"]); ip != "" {
-		out = append(out, fmt.Sprintf("%s\tpub.remotehost", ip))
 	}
 
 	newHosts := strings.Join(out, "\n")
@@ -108,17 +77,13 @@ func ensureLocalHostsMappings(m map[string]string) error {
 	return nil
 }
 
-func ensureLocalArcHostsAliases(pubHost string) error {
-	pubIP, err := resolveHostToIP(pubHost)
-	if err != nil {
-		return err
-	}
+func ensureLocalArcHostsAliases(_ string) error {
 	// "remotehost" should point at the server's WG/LAN address.
 	return ensureLocalHostsMappings(map[string]string{
 		"lh":             "127.0.0.1",
 		"rh":             wgServerIP,
-		"pub.rh":         pubIP,
+		"pub.rh":         "",
 		"remotehost":     wgServerIP,
-		"pub.remotehost": pubIP,
+		"pub.remotehost": "",
 	})
 }

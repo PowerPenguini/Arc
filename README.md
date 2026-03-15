@@ -14,7 +14,7 @@ ARC is a seamless server-client workflow tool where the local machine is treated
   - `sw <name>` attaches/creates named remote tmux session,
   - `sl` lists remote tmux sessions,
   - `x` (or `x <name>`) kills remote tmux session (`arc` by default),
-  - connection order is always `arc@remotehost` then `arc@pub.remotehost`.
+  - connection target is always `arc@remotehost`.
   - on remote:
   - `sw` detaches current tmux client (keeps session alive),
   - `sw <name>` switches to named tmux session (creates it if missing),
@@ -23,14 +23,14 @@ ARC is a seamless server-client workflow tool where the local machine is treated
 
 - Automatic handoff on local Zsh start:
   - on first interactive local shell startup, ARC attempts to auto-connect to the remote `ARC` shell,
-  - connection order: `arc@remotehost` -> `arc@pub.remotehost`.
+  - connection target: `arc@remotehost`.
 
 - Local hosts alias management:
-  - updates local hosts mappings for `remotehost` and `pub.remotehost`,
-  - keeps SSH targets stable for seamless switching and auto-connect behavior.
+  - updates local hosts mappings for `remotehost`,
+  - keeps the WireGuard SSH target stable for seamless switching and auto-connect behavior.
 
-- WireGuard-aware remote access strategy:
-  - prefers private/WireGuard path (`remotehost`) and falls back to public endpoint (`pub.remotehost`) when needed.
+- WireGuard-only remote access strategy:
+  - local ARC access uses the private/WireGuard path (`remotehost`) only.
 
 - NFS-backed remote home:
   - remote exports `/home/arc` via NFS (WireGuard-only access scope),

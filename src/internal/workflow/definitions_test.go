@@ -4,8 +4,8 @@ import "testing"
 
 func TestDefaultSetupSteps_OrderAndCount(t *testing.T) {
 	steps := DefaultSetupSteps()
-	if len(steps) != 31 {
-		t.Fatalf("expected 31 setup steps, got %d", len(steps))
+	if len(steps) != 32 {
+		t.Fatalf("expected 32 setup steps, got %d", len(steps))
 	}
 	if steps[0].ID != StepDetectPrivilegedMode {
 		t.Fatalf("unexpected first step ID: %q", steps[0].ID)
@@ -43,7 +43,8 @@ func TestDefaultSetupSteps_OrderAndCount(t *testing.T) {
 	assertBefore(StepVerifyLocalArcNFSMount, StepConfigureRemoteWaypipe)
 	assertBefore(StepConfigureRemoteWaypipe, StepConfigureLocalWaypipe)
 	assertBefore(StepConfigureLocalWaypipe, StepConfigureClipboardComp)
-	assertBefore(StepConfigureClipboardComp, StepConfigureImageClipboard)
+	assertBefore(StepConfigureClipboardComp, StepHardenServerSSH)
+	assertBefore(StepHardenServerSSH, StepConfigureImageClipboard)
 }
 
 func TestSetupStepDefinitions_ValidAndUnique(t *testing.T) {
@@ -58,8 +59,8 @@ func TestSetupStepDefinitions_ValidAndUnique(t *testing.T) {
 		}
 		seen[def.ID] = struct{}{}
 	}
-	if len(seen) != 31 {
-		t.Fatalf("expected 31 unique step IDs, got %d", len(seen))
+	if len(seen) != 32 {
+		t.Fatalf("expected 32 unique step IDs, got %d", len(seen))
 	}
 }
 

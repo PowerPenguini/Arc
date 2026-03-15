@@ -48,6 +48,7 @@ var runtimeStepExecutors = map[workflow.StepID]stepExecutor{
 	workflow.StepConfigureRemoteWaypipe:     execInfraStep,
 	workflow.StepConfigureLocalWaypipe:      execInfraStep,
 	workflow.StepConfigureClipboardComp:     execInfraStep,
+	workflow.StepHardenServerSSH:            execInfraStep,
 	workflow.StepConfigureImageClipboard:    execInfraStep,
 }
 

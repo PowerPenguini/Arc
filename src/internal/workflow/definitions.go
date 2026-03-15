@@ -31,6 +31,7 @@ const (
 	StepConfigureRemoteWaypipe     StepID = "server.configure_waypipe_runtime"
 	StepConfigureLocalWaypipe      StepID = "local.configure_waypipe_tunnel"
 	StepConfigureClipboardComp     StepID = "server.configure_clipboard_compositor"
+	StepHardenServerSSH            StepID = "server.harden_ssh_access"
 	StepConfigureImageClipboard    StepID = "local.configure_image_clipboard_sync"
 )
 
@@ -66,6 +67,7 @@ func SetupStepDefinitions() []StepDef {
 		{ID: StepConfigureRemoteWaypipe, Label: "Server: configure waypipe runtime"},
 		{ID: StepConfigureLocalWaypipe, Label: "Local: configure persistent waypipe tunnel"},
 		{ID: StepConfigureClipboardComp, Label: "Server: configure clipboard compositor"},
+		{ID: StepHardenServerSSH, Label: "Server: harden SSH access"},
 		{ID: StepConfigureImageClipboard, Label: "Local: configure image clipboard sync"},
 	}
 }

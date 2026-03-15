@@ -3,6 +3,33 @@
 # Requires a font with powerline/nerd glyphs.
 [[ $- != *i* ]] && return
 
+# Shared history across local/server via NFS when the WireGuard path is up.
+__arc_vpn_path_healthy() {
+	if ! ip -o route get 10.0.0.1 2>/dev/null | grep -Eq 'dev[[:space:]]+wg0([[:space:]]|$)'; then
+		return 1
+	fi
+
+	local __arc_now __arc_hs
+	__arc_now="$(date +%s)"
+	__arc_hs="$(wg show wg0 latest-handshakes 2>/dev/null | awk 'NF>=2 && $2>m{m=$2} END{print m+0}')"
+	if (( __arc_hs > 0 && (__arc_now - __arc_hs) <= 180 )); then
+		return 0
+	fi
+
+	if command -v timeout >/dev/null 2>&1; then
+		timeout 0.35 ping -n -c1 -W1 10.0.0.1 >/dev/null 2>&1
+		return $?
+	fi
+	ping -n -c1 -W1 10.0.0.1 >/dev/null 2>&1
+}
+
+__arc_state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/arc"
+mkdir -p "$__arc_state_dir" 2>/dev/null || true
+HISTFILE="$__arc_state_dir/.bash_history_local"
+if __arc_vpn_path_healthy; then
+	HISTFILE=/home/arc/.bash_history_shared
+fi
+
 __arc_sw_connect() {
 	local __arc_tmux_session="${1:-arc}"
 	if [[ ! "$__arc_tmux_session" =~ ^[A-Za-z0-9._-]+$ ]]; then
@@ -10,7 +37,7 @@ __arc_sw_connect() {
 		return 2
 	fi
 
-	# Quiet preflight checks to avoid noisy SSH errors on fallback.
+	# Quiet preflight check to avoid noisy SSH errors when WG is down.
 	local __arc_ssh_probe_opts=(-o BatchMode=yes -o ConnectTimeout=2 -o ConnectionAttempts=1 -o StrictHostKeyChecking=accept-new -o LogLevel=ERROR)
 	# Fast dead-link detection for the real session so disconnects don't "hang" for long.
 	local __arc_ssh_run_opts=(-q -o LogLevel=QUIET -o ServerAliveInterval=2 -o ServerAliveCountMax=1 -o TCPKeepAlive=yes)
@@ -25,24 +52,10 @@ __arc_sw_connect() {
 		# Clear the extra terminal line left by ssh/tmux detach return.
 		(( __arc_ssh_rc == 0 )) && printf '\r\033[1A\033[2K\r'
 		return $__arc_ssh_rc
-	else
-		__arc_last_err="remotehost: probe failed"
 	fi
-	if ssh "${__arc_ssh_probe_opts[@]}" arc@pub.remotehost true >/dev/null 2>&1; then
-		ssh -t "${__arc_ssh_run_opts[@]}" arc@pub.remotehost "$__arc_ssh_cmd"
-		__arc_ssh_rc=$?
-		(( __arc_ssh_rc != 0 )) && __arc_last_err="pub.remotehost: session attach failed (exit ${__arc_ssh_rc})"
-		(( __arc_ssh_rc == 0 )) && printf '\r\033[1A\033[2K\r'
-		return $__arc_ssh_rc
-	else
-		if [[ -n "$__arc_last_err" ]]; then
-			__arc_last_err="${__arc_last_err}; pub.remotehost: probe failed"
-		else
-			__arc_last_err="pub.remotehost: probe failed"
-		fi
-	fi
+	__arc_last_err="remotehost: probe failed"
 	printf 'sw: cannot connect (%s)\n' "$__arc_last_err" >&2
-	printf 'sw: run `ssh -vv arc@remotehost true` and `ssh -vv arc@pub.remotehost true` for details\n' >&2
+	printf 'sw: run `ssh -vv arc@remotehost true` for details\n' >&2
 	return 255
 }
 
@@ -64,11 +77,7 @@ sl() {
 		ssh "${__arc_ssh_run_opts[@]}" arc@remotehost "$__arc_ls_cmd"
 		return $?
 	fi
-	if ssh "${__arc_ssh_probe_opts[@]}" arc@pub.remotehost true >/dev/null 2>&1; then
-		ssh "${__arc_ssh_run_opts[@]}" arc@pub.remotehost "$__arc_ls_cmd"
-		return $?
-	fi
-	printf 'sl: cannot reach remotehost or pub.remotehost\n' >&2
+	printf 'sl: cannot reach remotehost\n' >&2
 	return 255
 }
 
@@ -91,17 +100,13 @@ x() {
 		ssh "${__arc_ssh_run_opts[@]}" arc@remotehost "$__arc_x_cmd"
 		return $?
 	fi
-	if ssh "${__arc_ssh_probe_opts[@]}" arc@pub.remotehost true >/dev/null 2>&1; then
-		ssh "${__arc_ssh_run_opts[@]}" arc@pub.remotehost "$__arc_x_cmd"
-		return $?
-	fi
-	printf 'x: cannot reach remotehost or pub.remotehost\n' >&2
+	printf 'x: cannot reach remotehost\n' >&2
 	return 255
 }
 
 # ARC AUTO SSH (local)
-# Attempt arc@remotehost first (WG/LAN), then arc@pub.remotehost (public).
-# Never prompt for passwords during auto-connect; if both fail, stay local.
+# Attempt arc@remotehost over WireGuard/LAN.
+# Never prompt for passwords during auto-connect; if it fails, stay local.
 if [[ -z "${ARC_AUTO_SSH_ONCE-}" ]]; then
 	ARC_AUTO_SSH_ONCE=1
 	if [[ -z "${SSH_CONNECTION-}" ]]; then
@@ -153,36 +158,15 @@ __arc_cwd() {
 }
 
 __arc_vpn_icon() {
-	local __arc_now __arc_hs __arc_recent=0 __arc_ping_ok=0
+	local __arc_now
 	__arc_now="$(date +%s)"
 
 	# Recompute at most every 3 seconds to avoid running checks on every prompt render.
 	if (( __arc_now - ${__ARC_VPN_CACHE_TS:-0} >= 3 )); then
 		__ARC_VPN_CACHE_TS="$__arc_now"
 		__ARC_VPN_CACHE_ON=0
-
-		# Hard requirement: route to the server must go via wg0.
-		if ip -o route get 10.0.0.1 2>/dev/null | grep -Eq 'dev[[:space:]]+wg0([[:space:]]|$)'; then
-			# Fast signal: recent handshake.
-			__arc_hs="$(wg show wg0 latest-handshakes 2>/dev/null | awk 'NF>=2 && $2>m{m=$2} END{print m+0}')"
-			if (( __arc_hs > 0 && (__arc_now - __arc_hs) <= 180 )); then
-				__arc_recent=1
-			fi
-
-			# Fallback signal: quick connectivity check.
-			if command -v timeout >/dev/null 2>&1; then
-				if timeout 0.35 ping -n -c1 -W1 10.0.0.1 >/dev/null 2>&1; then
-					__arc_ping_ok=1
-				fi
-			else
-				if ping -n -c1 -W1 10.0.0.1 >/dev/null 2>&1; then
-					__arc_ping_ok=1
-				fi
-			fi
-
-			if (( __arc_recent == 1 || __arc_ping_ok == 1 )); then
-				__ARC_VPN_CACHE_ON=1
-			fi
+		if __arc_vpn_path_healthy; then
+			__ARC_VPN_CACHE_ON=1
 		fi
 	fi
 

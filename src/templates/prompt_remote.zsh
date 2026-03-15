@@ -69,6 +69,10 @@ clipd-restart() {
 	systemctl --user restart arc-clipd.service
 }
 
+codex() {
+	codex-wayland "$@"
+}
+
 cw() {
 	codex-wayland "$@"
 }

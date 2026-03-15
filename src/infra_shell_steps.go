@@ -105,7 +105,7 @@ func configureLocalWaypipeService() error {
 	envPath := filepath.Join(configDir, "waypipe-client.env")
 	envData := []byte(strings.Join([]string{
 		"ARC_REMOTE_USER=arc",
-		"ARC_REMOTE_HOSTS=remotehost pub.remotehost",
+		"ARC_REMOTE_HOSTS=remotehost",
 		"ARC_WAYPIPE_DISPLAY=wayland-0",
 		"",
 	}, "\n"))
@@ -117,7 +117,7 @@ func configureLocalWaypipeService() error {
 	runner := `#!/bin/sh
 set -eu
 
-hosts="${ARC_REMOTE_HOSTS:-remotehost pub.remotehost}"
+host="${ARC_REMOTE_HOSTS:-remotehost}"
 user="${ARC_REMOTE_USER:-arc}"
 display_name="${ARC_WAYPIPE_DISPLAY:-wayland-arc}"
 probe_opts="-o BatchMode=yes -o ConnectTimeout=2 -o ConnectionAttempts=1 -o StrictHostKeyChecking=accept-new -o LogLevel=ERROR"
@@ -125,18 +125,11 @@ ssh_opts="-q -o LogLevel=QUIET -o ServerAliveInterval=2 -o ServerAliveCountMax=1
 remote_keepalive='sh -lc ". \"$HOME/.config/arc/waypipe.env\" 2>/dev/null || true; while :; do sleep 3600; done"'
 
 while :; do
-	connected=0
-	for host in $hosts; do
-		if ssh $probe_opts "${user}@${host}" true >/dev/null 2>&1; then
-			connected=1
-			waypipe --display "$display_name" ssh $ssh_opts "${user}@${host}" "$remote_keepalive" || true
-			break
-		fi
-	done
-	if [ "$connected" -eq 0 ]; then
+	if ! ssh $probe_opts "${user}@${host}" true >/dev/null 2>&1; then
 		sleep 2
 		continue
 	fi
+	waypipe --display "$display_name" ssh $ssh_opts "${user}@${host}" "$remote_keepalive" || true
 	sleep 1
 done
 `

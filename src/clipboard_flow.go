@@ -160,7 +160,7 @@ func configureLocalImageClipboardSync() error {
 	envPath := filepath.Join(configDir, "clipboard-sync.env")
 	envData := []byte(strings.Join([]string{
 		"ARC_REMOTE_USER=arc",
-		"ARC_REMOTE_HOSTS=remotehost pub.remotehost",
+		"ARC_REMOTE_HOSTS=remotehost",
 		"ARC_REMOTE_CLIPBOARD_DISPLAY=arc-clipd-0",
 		"ARC_CLIPBOARD_POLL_SECONDS=2",
 		"",
@@ -173,7 +173,7 @@ func configureLocalImageClipboardSync() error {
 	runner := `#!/bin/sh
 set -eu
 
-hosts="${ARC_REMOTE_HOSTS:-remotehost pub.remotehost}"
+host="${ARC_REMOTE_HOSTS:-remotehost}"
 user="${ARC_REMOTE_USER:-arc}"
 display_name="${ARC_REMOTE_CLIPBOARD_DISPLAY:-arc-clipd-0}"
 poll_seconds="${ARC_CLIPBOARD_POLL_SECONDS:-2}"
@@ -218,16 +218,12 @@ while :; do
 		continue
 	fi
 	sent=0
-	for host in $hosts; do
-		if ! ssh $probe_opts "${user}@${host}" true >/dev/null 2>&1; then
-			continue
-		fi
+	if ssh $probe_opts "${user}@${host}" true >/dev/null 2>&1; then
 		if ssh $ssh_opts "${user}@${host}" "ARC_CLIPD_DISPLAY='$display_name' ~/.local/bin/arc-remote-clipboard-put-image '$kind'" <"$tmp"; then
 			last_hash="$hash"
 			sent=1
-			break
 		fi
-	done
+	fi
 	rm -f "$tmp"
 	if [ "$sent" -eq 0 ]; then
 		echo "arc-clipboard-sync: could not reach remote host or wl-copy failed" >&2

@@ -26,6 +26,7 @@ var infraStepHandlers = map[workflow.StepID]infraStepFunc{
 	workflow.StepConfigureRemoteWaypipe:     configureRemoteWaypipe,
 	workflow.StepConfigureLocalWaypipe:      func(infraRunContext) error { return configureLocalWaypipeService() },
 	workflow.StepConfigureClipboardComp:     configureRemoteClipboardCompositor,
+	workflow.StepHardenServerSSH:            hardenServerSSH,
 	workflow.StepConfigureImageClipboard:    func(infraRunContext) error { return configureLocalImageClipboardSync() },
 }
 

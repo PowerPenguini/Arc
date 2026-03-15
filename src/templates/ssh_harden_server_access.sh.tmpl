@@ -1,0 +1,99 @@
+set -eu
+
+sshd_bin="$(command -v sshd || true)"
+[ -n "$sshd_bin" ] || sshd_bin=/usr/sbin/sshd
+[ -x "$sshd_bin" ] || { echo "sshd binary not found"; exit 1; }
+nft_bin="$(command -v nft || true)"
+[ -n "$nft_bin" ] || nft_bin=/usr/sbin/nft
+[ -x "$nft_bin" ] || { echo "nft binary not found"; exit 1; }
+public_if="$(ip route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i==\"dev\"){print $(i+1); exit}}')"
+[ -n "$public_if" ] || { echo "could not detect public interface"; exit 1; }
+
+sudo -n install -d -m 0755 /etc/ssh/sshd_config.d
+tmp="$(mktemp)"
+cat > "$tmp" <<'EOF'
+# ARC managed: basic SSH hardening.
+PermitRootLogin no
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+ChallengeResponseAuthentication no
+PubkeyAuthentication yes
+PermitEmptyPasswords no
+MaxAuthTries 3
+LoginGraceTime 20
+X11Forwarding no
+AllowAgentForwarding no
+PermitUserEnvironment no
+UseDNS no
+ClientAliveInterval 300
+ClientAliveCountMax 2
+EOF
+sudo -n install -m 0644 "$tmp" /etc/ssh/sshd_config.d/90-arc-hardening.conf
+rm -f "$tmp"
+
+sudo -n install -d -m 0755 /etc/nftables.d
+tmp="$(mktemp)"
+cat > "$tmp" <<EOF
+table inet arc_public_lockdown {
+  chain input {
+    type filter hook input priority 0; policy accept;
+
+    iifname "lo" accept
+    ct state established,related accept
+    iifname "{{.WGInterface}}" accept
+    iifname "$public_if" udp dport {{.WGPort}} accept
+    iifname "$public_if" drop
+  }
+}
+EOF
+sudo -n install -m 0644 "$tmp" /etc/nftables.d/arc-public-lockdown.nft
+rm -f "$tmp"
+tmp="$(mktemp)"
+cat > "$tmp" <<EOF
+[Unit]
+Description=ARC public ingress lockdown
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStartPre=-$nft_bin delete table inet arc_public_lockdown
+ExecStart=$nft_bin -f /etc/nftables.d/arc-public-lockdown.nft
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+sudo -n install -m 0644 "$tmp" /etc/systemd/system/arc-public-lockdown.service
+rm -f "$tmp"
+
+sudo -n "$sshd_bin" -t
+sudo -n systemctl daemon-reload
+sudo -n systemctl enable --now arc-public-lockdown.service
+sudo -n systemctl is-active --quiet arc-public-lockdown.service
+if command -v systemctl >/dev/null 2>&1; then
+	sudo -n systemctl reload ssh >/dev/null 2>&1 || \
+	sudo -n systemctl reload sshd >/dev/null 2>&1 || \
+	sudo -n systemctl restart ssh >/dev/null 2>&1 || \
+	sudo -n systemctl restart sshd >/dev/null 2>&1
+else
+	sudo -n service ssh reload >/dev/null 2>&1 || \
+	sudo -n service sshd reload >/dev/null 2>&1 || \
+	sudo -n service ssh restart >/dev/null 2>&1 || \
+	sudo -n service sshd restart >/dev/null 2>&1
+fi
+
+if command -v ufw >/dev/null 2>&1; then
+	ufw_status="$(sudo -n ufw status 2>/dev/null || true)"
+	if printf '%s\n' "$ufw_status" | grep -q 'Status: active'; then
+		if ! printf '%s\n' "$ufw_status" | grep -Eq '^22/tcp[[:space:]]+ALLOW IN[[:space:]]+Anywhere on {{.WGInterface}}$'; then
+			sudo -n ufw allow in on {{.WGInterface}} proto tcp to any port 22 >/dev/null
+		fi
+		if ! printf '%s\n' "$ufw_status" | grep -Eq '^{{.WGPort}}/udp[[:space:]]+ALLOW IN[[:space:]]+Anywhere$'; then
+			sudo -n ufw allow {{.WGPort}}/udp >/dev/null
+		fi
+		if ! printf '%s\n' "$ufw_status" | grep -Eq '^22/tcp[[:space:]]+DENY IN[[:space:]]+Anywhere$'; then
+			sudo -n ufw deny 22/tcp >/dev/null
+		fi
+	fi
+fi
