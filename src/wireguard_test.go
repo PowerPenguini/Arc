@@ -41,11 +41,26 @@ func TestBuildWGConfig_RendersExpectedFields(t *testing.T) {
 	if !strings.Contains(wg.ServerConf, "ListenPort = 51820") {
 		t.Fatalf("server conf missing ListenPort")
 	}
+	if !strings.Contains(wg.ServerConf, "AllowedIPs = "+wgDesktopIP+"/32") {
+		t.Fatalf("server conf missing desktop peer")
+	}
+	if !strings.Contains(wg.ServerConf, "AllowedIPs = "+wgMobileIP+"/32") {
+		t.Fatalf("server conf missing mobile peer")
+	}
+	if !strings.Contains(wg.ClientConf, "Address = "+wgDesktopCIDR) {
+		t.Fatalf("desktop client conf missing desktop address")
+	}
 	if !strings.Contains(wg.ClientConf, "Endpoint = example.com:51820") {
 		t.Fatalf("client conf missing endpoint")
 	}
 	if !strings.Contains(wg.ClientConf, "AllowedIPs = "+wgServerIP+"/32") {
 		t.Fatalf("client conf missing AllowedIPs")
+	}
+	if !strings.Contains(wg.MobileClientConf, "Address = "+wgMobileCIDR) {
+		t.Fatalf("mobile client conf missing mobile address")
+	}
+	if !strings.Contains(wg.MobileClientConf, "Endpoint = example.com:51820") {
+		t.Fatalf("mobile client conf missing endpoint")
 	}
 }
 

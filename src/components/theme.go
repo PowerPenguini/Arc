@@ -19,6 +19,7 @@ var (
 	cGrid  = rgb{0x16, 0x16, 0x16}
 	cGrid2 = rgb{0x20, 0x20, 0x20}
 	cErr   = rgb{0xFF, 0x4D, 0x4D}
+	cQRBg  = rgb{0xFF, 0xFF, 0xFF}
 )
 
 func ansiFG(c rgb) string { return fmt.Sprintf("\x1b[38;2;%d;%d;%dm", c.r, c.g, c.b) }
@@ -35,7 +36,7 @@ const (
 	colGap          = 6
 	cardMinW        = 44
 
-	cardHeaderText  = " 1 - SETUP REMOTE"
+	cardHeaderText  = " 1 - SSH DEVICE"
 	cardInputLabelW = 10
 	cardInputBoxH   = 3
 )

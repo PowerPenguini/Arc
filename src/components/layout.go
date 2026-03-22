@@ -26,7 +26,7 @@ func ButtonRect(cardR Rect, label string) (Rect, bool) {
 }
 
 func InputRectsFromCard(cardR Rect) (Rect, Rect, bool) {
-	ipY := cardR.Y + 3
+	ipY := cardR.Y + 5
 	passY := ipY + cardInputBoxH + 1
 	boxX := cardR.X + 2 + cardInputLabelW
 	boxW := cardR.W - 4 - cardInputLabelW
@@ -88,7 +88,7 @@ func ComputeLayout(w, h int, phase Phase) (Layout, bool) {
 		cx0 = 0
 	}
 
-	cardH := 14
+	cardH := 17
 	maxH := h - 8
 	if phase == PhaseLog {
 		cardH = 22

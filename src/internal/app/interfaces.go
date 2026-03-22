@@ -3,14 +3,17 @@ package app
 import "arc/internal/workflow"
 
 type WGConfig struct {
-	ServerPriv string
-	ServerPub  string
-	ClientPriv string
-	ClientPub  string
+	ServerPriv       string
+	ServerPub        string
+	ClientPriv       string
+	ClientPub        string
+	MobileClientPriv string
+	MobileClientPub  string
 
-	ServerConf string
-	ClientConf string
-	Endpoint   string
+	ServerConf       string
+	ClientConf       string
+	MobileClientConf string
+	Endpoint         string
 }
 
 type SetupStepRequest struct {
@@ -31,7 +34,8 @@ type SetupStepResult struct {
 
 type Services interface {
 	CheckLocalSudo() error
-	ParseSSHConnectTarget(target string) (user, host, addr string, err error)
+	ParseSSHDeviceTarget(target string) (user, host, addr string, err error)
 	SetupDefinition() []workflow.Step
 	RunSetupStep(req SetupStepRequest) (SetupStepResult, error)
+	BuildMobilePayload(host string, wg WGConfig) (string, error)
 }

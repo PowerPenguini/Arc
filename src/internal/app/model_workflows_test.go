@@ -12,7 +12,7 @@ type fakeServices struct {
 
 func (f *fakeServices) CheckLocalSudo() error { return nil }
 
-func (f *fakeServices) ParseSSHConnectTarget(string) (string, string, string, error) {
+func (f *fakeServices) ParseSSHDeviceTarget(string) (string, string, string, error) {
 	return "", "", "", nil
 }
 
@@ -25,6 +25,10 @@ func (f *fakeServices) SetupDefinition() []workflow.Step {
 func (f *fakeServices) RunSetupStep(req SetupStepRequest) (SetupStepResult, error) {
 	f.lastReq = req
 	return SetupStepResult{}, nil
+}
+
+func (f *fakeServices) BuildMobilePayload(string, WGConfig) (string, error) {
+	return "", nil
 }
 
 func TestRunSetupStepCmd_UsesStepIDFromDefinition(t *testing.T) {

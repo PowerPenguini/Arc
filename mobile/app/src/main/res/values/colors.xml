@@ -1,0 +1,13 @@
+<resources>
+    <color name="surface_shell">#F6F4EF</color>
+    <color name="surface_card">#FFFCF6</color>
+    <color name="surface_border">#DDD5C7</color>
+    <color name="ink_main">#231F18</color>
+    <color name="ink_muted">#6A6258</color>
+    <color name="brand_main">#D7FF00</color>
+    <color name="brand_dark">#9FB800</color>
+    <color name="terminal_bg">#101313</color>
+    <color name="terminal_frame">#202628</color>
+    <color name="terminal_title">#D7FF00</color>
+    <color name="danger_main">#B7432A</color>
+</resources>

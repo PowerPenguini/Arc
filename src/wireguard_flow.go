@@ -106,7 +106,7 @@ func autoSyncWireGuardPeerKeys(ctx infraRunContext) (bool, error) {
 		return false, fmt.Errorf("patch local wg peer: %w", lerr)
 	}
 	// Patch remote peer (routes to client IP) to use local's pubkey.
-	remotePatched, remoteChanged, rerr := patchWGPeerInConf(remoteConf, strings.Split(wgClientCIDR, "/")[0]+"/32", localPub, "", "")
+	remotePatched, remoteChanged, rerr := patchWGPeerInConf(remoteConf, wgDesktopIP+"/32", localPub, "", "")
 	if rerr != nil {
 		return false, fmt.Errorf("patch remote wg peer: %w", rerr)
 	}

@@ -67,6 +67,7 @@ func (m model) handleSetupStepDone(msg setupStepDoneMsg) (tea.Model, tea.Cmd) {
 	if next >= len(m.steps) {
 		m.working = false
 		m.submitted = true
+		m.buildMobileQRCode()
 		return m, nil
 	}
 	m.steps[next].State = stepRunning
@@ -252,7 +253,7 @@ func (m model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	if m.focus == 0 {
-		m.ip.HandleKey(msg)
+		m.target.HandleKey(msg)
 	} else if m.focus == 1 {
 		m.pass.HandleKey(msg)
 	}
@@ -316,5 +317,8 @@ func (m *model) resetRemotePhaseState() {
 	m.addr = ""
 	m.password = ""
 	m.useSudo = false
+	m.mobilePayload = ""
+	m.mobileQR = nil
+	m.mobileQRErr = ""
 	m.setFocus(0)
 }

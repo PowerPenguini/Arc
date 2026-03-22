@@ -26,7 +26,8 @@ func hardenServerSSH(ctx infraRunContext) error {
 	if _, err := execLocal(
 		"ssh",
 		"-o", "BatchMode=yes",
-		"-o", "StrictHostKeyChecking=accept-new",
+		"-o", "StrictHostKeyChecking=no",
+		"-o", "UserKnownHostsFile=/dev/null",
 		"-o", "ConnectTimeout=5",
 		arcUser+"@remotehost",
 		"true",

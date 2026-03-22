@@ -59,8 +59,8 @@ func (runtimeServices) CheckLocalSudo() error {
 	return err
 }
 
-func (runtimeServices) ParseSSHConnectTarget(target string) (user, host, addr string, err error) {
-	return parseSSHConnectTarget(target)
+func (runtimeServices) ParseSSHDeviceTarget(target string) (user, host, addr string, err error) {
+	return parseSSHDeviceTarget(target)
 }
 
 func (runtimeServices) SetupDefinition() []workflow.Step {
@@ -102,6 +102,10 @@ func (runtimeServices) RunSetupStep(req app.SetupStepRequest) (app.SetupStepResu
 		return res, err
 	}
 	return res, nil
+}
+
+func (runtimeServices) BuildMobilePayload(host string, wg app.WGConfig) (string, error) {
+	return buildMobilePayload(host, fromAppWG(wg))
 }
 
 func validateRuntimeStepRegistry() error {
@@ -208,7 +212,14 @@ func execEnsureArcSSHAccess(req app.SetupStepRequest, wg wgConfig, res *app.Setu
 	if err := ensureLocalSSHKeyPair(); err != nil {
 		return err
 	}
-	pubKeyLine, err := readPublicKeyLine(userSSHPublicKeyPath())
+	if err := ensureLocalMobileSSHKeyPair(); err != nil {
+		return err
+	}
+	desktopPubKeyLine, err := readPublicKeyLine(userSSHPublicKeyPath())
+	if err != nil {
+		return err
+	}
+	mobilePubKeyLine, err := readPublicKeyLine(userMobileSSHPublicKeyPath())
 	if err != nil {
 		return err
 	}
@@ -216,11 +227,15 @@ func execEnsureArcSSHAccess(req app.SetupStepRequest, wg wgConfig, res *app.Setu
 	if err != nil {
 		return err
 	}
-	err = ensureArcAuthorizedKey(client, req.UseSudo, req.Password, pubKeyLine)
-	_ = client.Close()
-	if err != nil {
+	if err := ensureArcAuthorizedKey(client, req.UseSudo, req.Password, desktopPubKeyLine); err != nil {
+		_ = client.Close()
 		return err
 	}
+	if err := ensureArcAuthorizedKey(client, req.UseSudo, req.Password, mobilePubKeyLine); err != nil {
+		_ = client.Close()
+		return err
+	}
+	_ = client.Close()
 	attachWG(res, wg)
 	return nil
 }
@@ -254,24 +269,30 @@ func execVerifyTunnelConnectivity(req app.SetupStepRequest, wg wgConfig, res *ap
 
 func toAppWG(c wgConfig) app.WGConfig {
 	return app.WGConfig{
-		ServerPriv: c.ServerPriv,
-		ServerPub:  c.ServerPub,
-		ClientPriv: c.ClientPriv,
-		ClientPub:  c.ClientPub,
-		ServerConf: c.ServerConf,
-		ClientConf: c.ClientConf,
-		Endpoint:   c.Endpoint,
+		ServerPriv:       c.ServerPriv,
+		ServerPub:        c.ServerPub,
+		ClientPriv:       c.ClientPriv,
+		ClientPub:        c.ClientPub,
+		MobileClientPriv: c.MobileClientPriv,
+		MobileClientPub:  c.MobileClientPub,
+		ServerConf:       c.ServerConf,
+		ClientConf:       c.ClientConf,
+		MobileClientConf: c.MobileClientConf,
+		Endpoint:         c.Endpoint,
 	}
 }
 
 func fromAppWG(c app.WGConfig) wgConfig {
 	return wgConfig{
-		ServerPriv: c.ServerPriv,
-		ServerPub:  c.ServerPub,
-		ClientPriv: c.ClientPriv,
-		ClientPub:  c.ClientPub,
-		ServerConf: c.ServerConf,
-		ClientConf: c.ClientConf,
-		Endpoint:   c.Endpoint,
+		ServerPriv:       c.ServerPriv,
+		ServerPub:        c.ServerPub,
+		ClientPriv:       c.ClientPriv,
+		ClientPub:        c.ClientPub,
+		MobileClientPriv: c.MobileClientPriv,
+		MobileClientPub:  c.MobileClientPub,
+		ServerConf:       c.ServerConf,
+		ClientConf:       c.ClientConf,
+		MobileClientConf: c.MobileClientConf,
+		Endpoint:         c.Endpoint,
 	}
 }

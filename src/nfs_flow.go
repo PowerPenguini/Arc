@@ -13,11 +13,11 @@ const (
 )
 
 func nfsClientCIDR() string {
-	return strings.Split(wgClientCIDR, "/")[0] + "/32"
+	return wgDesktopIP + "/32"
 }
 
 func nfsClientIP() string {
-	return strings.Split(wgClientCIDR, "/")[0]
+	return wgDesktopIP
 }
 
 func nfsServerExportSource() string {
@@ -119,10 +119,10 @@ func installRemoteNFS(ctx infraRunContext) error {
 		return err
 	}
 	defer client.Close()
-	if _, err := runRemoteCommand(client, "sudo -n apt-get update", false, ""); err != nil {
+	if _, err := runRemoteAPTCommand(client, "sudo -n apt-get update"); err != nil {
 		return err
 	}
-	if _, err := runRemoteCommand(client, "sudo -n apt-get install -y nfs-kernel-server", false, ""); err != nil {
+	if _, err := runRemoteAPTCommand(client, "sudo -n apt-get install -y nfs-kernel-server"); err != nil {
 		return err
 	}
 	return nil
@@ -171,10 +171,10 @@ func installLocalNFSClient() error {
 	}
 	switch id {
 	case "ubuntu", "debian":
-		if _, err := execLocal("sudo", "-n", "apt-get", "update"); err != nil {
+		if _, err := runLocalAPTCommand("sudo", "-n", "apt-get", "update"); err != nil {
 			return err
 		}
-		if _, err := execLocal("sudo", "-n", "apt-get", "install", "-y", "nfs-common"); err != nil {
+		if _, err := runLocalAPTCommand("sudo", "-n", "apt-get", "install", "-y", "nfs-common"); err != nil {
 			return err
 		}
 		return nil

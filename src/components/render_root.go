@@ -1,5 +1,12 @@
 package components
 
+func useSubmittedQRFullscreen(state ViewState) bool {
+	return state.Phase == PhaseLog &&
+		state.Submitted &&
+		state.Err == "" &&
+		(len(state.MobileQR) > 0 || state.MobileQRErr != "")
+}
+
 func Render(state ViewState) string {
 	if state.W <= 0 || state.H <= 0 {
 		return ""
@@ -7,6 +14,15 @@ func Render(state ViewState) string {
 
 	b := newBuf(state.W, state.H)
 	drawGrid(b, 6, 3)
+
+	if useSubmittedQRFullscreen(state) {
+		card := Rect{X: 2, Y: 1, W: state.W - 4, H: state.H - 2}
+		if card.W <= 0 || card.H <= 0 {
+			return renderBuf(b)
+		}
+		drawLogCard(state, b, card.X, card.Y, card.W, card.H)
+		return renderBuf(b)
+	}
 
 	layout, ok := ComputeLayout(state.W, state.H, state.Phase)
 	if !ok {

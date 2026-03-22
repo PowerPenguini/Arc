@@ -32,7 +32,10 @@ func drawCredCard(state ViewState, b [][]cell, x, y, w, h int) {
 		return
 	}
 
-	ipY := y + 3
+	drawText(b, x+2, y+3, cText, cBG, "Bootstrap one device over SSH.")
+	drawText(b, x+2, y+4, cSub, cBG, "Target: ssh://user@host:port or user@host[:port]")
+
+	ipY := y + 5
 	passY := ipY + cardInputBoxH + 1
 
 	boxX := x + 2 + cardInputLabelW
@@ -48,7 +51,7 @@ func drawCredCard(state ViewState, b [][]cell, x, y, w, h int) {
 	passFocused := state.Focus == 1 && !state.Submitted && !state.Working
 	connectFocused := (state.Focus == 2 || state.BtnHover) && !state.Submitted && !state.Working
 
-	drawText(b, x+2, ipY+1, cDim, cBG, "User@IP")
+	drawText(b, x+2, ipY+1, cDim, cBG, "SSH")
 	drawText(b, x+2, passY+1, cDim, cBG, "Password")
 
 	ipBorder := cGrid2
@@ -63,8 +66,8 @@ func drawCredCard(state ViewState, b [][]cell, x, y, w, h int) {
 	if boxW >= 4 {
 		drawBox(b, boxX, ipY, boxW, cardInputBoxH, ipBorder)
 		fillRect(b, boxX+1, ipY+1, boxW-2, 1, cText, cBG, ' ')
-		ip := state.IP
-		ip.drawInto(b, boxX+1, ipY+1, boxW-2, ipFocused)
+		target := state.Target
+		target.drawInto(b, boxX+1, ipY+1, boxW-2, ipFocused)
 	}
 
 	if boxW >= 4 {

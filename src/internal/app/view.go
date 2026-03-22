@@ -63,8 +63,11 @@ func (m model) toViewState() components.ViewState {
 		Steps:       toComponentSteps(m.steps),
 		SpinnerRune: m.spinnerRune(),
 
-		IP:   m.ip,
-		Pass: m.pass,
+		Target: m.target,
+		Pass:   m.pass,
+
+		MobileQR:    m.mobileQR,
+		MobileQRErr: m.mobileQRErr,
 	}
 }
 

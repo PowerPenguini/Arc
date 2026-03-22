@@ -1,6 +1,43 @@
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Logs / temp
+*.log
+*.tmp
+*.orig
+*.rej
+
+# Secrets / local env
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.jks
+*.keystore
+
+# Go
 /bin/
 *.exe
 *.test
 *.out
-clipd/target/
+coverage.out
 src/arc
+
+# Rust
+clipd/target/
+
+# Android / Gradle
+mobile/.gradle/
+mobile/build/
+mobile/app/build/
+mobile/local.properties
+*.apk
+*.aab
+*.ap_
+*.iml

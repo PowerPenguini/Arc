@@ -3,10 +3,12 @@ package main
 import (
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
 	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,35 +19,72 @@ import (
 
 const arcUser = "arc"
 
-func parseSSHConnectTarget(target string) (user, host, addr string, err error) {
-	parts := strings.SplitN(strings.TrimSpace(target), "@", 2)
+func parseSSHDeviceTarget(target string) (user, host, addr string, err error) {
+	raw := strings.TrimSpace(target)
+	if raw == "" {
+		return "", "", "", fmt.Errorf("missing SSH target")
+	}
+
+	if strings.HasPrefix(strings.ToLower(raw), "ssh://") {
+		u, err := url.Parse(raw)
+		if err != nil {
+			return "", "", "", fmt.Errorf("invalid SSH target %q: %w", target, err)
+		}
+		user = strings.TrimSpace(u.User.Username())
+		if user == "" {
+			return "", "", "", fmt.Errorf("invalid SSH target %q, expected ssh://user@host[:port]", target)
+		}
+		host = strings.TrimSpace(u.Hostname())
+		if host == "" {
+			return "", "", "", fmt.Errorf("invalid SSH target %q, missing host", target)
+		}
+		port := strings.TrimSpace(u.Port())
+		if port == "" {
+			port = "22"
+		}
+		return user, host, net.JoinHostPort(host, port), nil
+	}
+
+	parts := strings.SplitN(raw, "@", 2)
 	if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" || strings.TrimSpace(parts[1]) == "" {
-		return "", "", "", fmt.Errorf("invalid target %q, expected user@host", target)
+		return "", "", "", fmt.Errorf("invalid SSH target %q, expected ssh://user@host[:port] or user@host[:port]", target)
 	}
 
 	user = strings.TrimSpace(parts[0])
-	host = strings.TrimSpace(parts[1])
-	addr, err = normalizeSSHAddr(host)
+	host, addr, err = normalizeSSHTargetHost(strings.TrimSpace(parts[1]))
 	if err != nil {
-		return "", "", "", fmt.Errorf("invalid host %q: %w", host, err)
+		return "", "", "", fmt.Errorf("invalid host %q: %w", parts[1], err)
 	}
 	return user, host, addr, nil
 }
 
-func normalizeSSHAddr(host string) (string, error) {
+func normalizeSSHTargetHost(raw string) (host, addr string, err error) {
+	host = strings.TrimSpace(raw)
 	if host == "" {
-		return "", fmt.Errorf("host is empty")
+		return "", "", fmt.Errorf("host is empty")
 	}
-	if _, _, err := net.SplitHostPort(host); err == nil {
-		return host, nil
+
+	if parsedHost, parsedPort, splitErr := net.SplitHostPort(host); splitErr == nil {
+		if strings.TrimSpace(parsedHost) == "" {
+			return "", "", fmt.Errorf("host is empty")
+		}
+		if strings.TrimSpace(parsedPort) == "" {
+			return "", "", fmt.Errorf("port is empty")
+		}
+		return parsedHost, net.JoinHostPort(parsedHost, parsedPort), nil
 	}
+
 	if strings.HasPrefix(host, "[") && strings.HasSuffix(host, "]") {
-		return net.JoinHostPort(strings.Trim(host, "[]"), "22"), nil
+		stripped := strings.Trim(host, "[]")
+		if stripped == "" {
+			return "", "", fmt.Errorf("host is empty")
+		}
+		return stripped, net.JoinHostPort(stripped, "22"), nil
 	}
 	if strings.Count(host, ":") > 1 {
-		return net.JoinHostPort(host, "22"), nil
+		return host, net.JoinHostPort(host, "22"), nil
 	}
-	return net.JoinHostPort(host, "22"), nil
+	return host, net.JoinHostPort(host, "22"), nil
 }
 
 func dialWithPassword(user, addr, password string) (*ssh.Client, error) {
@@ -286,13 +325,26 @@ func userSSHPublicKeyPath() string {
 	return filepath.Join(userSSHDir(), "id_ed25519.pub")
 }
 
-func ensureLocalSSHKeyPair() error {
-	sshDir := userSSHDir()
-	privPath := filepath.Join(sshDir, "id_ed25519")
-	pubPath := privPath + ".pub"
+func userMobileSSHPrivateKeyPath() string {
+	return filepath.Join(userSSHDir(), "id_arc_mobile_rsa")
+}
 
-	if err := os.MkdirAll(sshDir, 0o700); err != nil {
-		return fmt.Errorf("cannot create %s: %w", sshDir, err)
+func userMobileSSHPublicKeyPath() string {
+	return userMobileSSHPrivateKeyPath() + ".pub"
+}
+
+func ensureLocalSSHKeyPair() error {
+	return ensureEd25519KeyPair(filepath.Join(userSSHDir(), "id_ed25519"))
+}
+
+func ensureLocalMobileSSHKeyPair() error {
+	return ensureRSAKeyPair(userMobileSSHPrivateKeyPath())
+}
+
+func ensureEd25519KeyPair(privPath string) error {
+	pubPath := privPath + ".pub"
+	if err := ensureKeyPairDir(privPath); err != nil {
+		return err
 	}
 
 	privInfo, privErr := os.Stat(privPath)
@@ -302,18 +354,7 @@ func ensureLocalSSHKeyPair() error {
 	}
 
 	if privErr == nil && !privInfo.IsDir() && os.IsNotExist(pubErr) {
-		signer, err := readPrivateKeySigner(privPath)
-		if err != nil {
-			return fmt.Errorf("cannot read existing private key: %w", err)
-		}
-		pub := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(signer.PublicKey())))
-		if pub == "" {
-			return fmt.Errorf("derived public key is empty")
-		}
-		if err := os.WriteFile(pubPath, []byte(pub+"\n"), 0o644); err != nil {
-			return fmt.Errorf("cannot write %s: %w", pubPath, err)
-		}
-		return nil
+		return writePublicKeyFromPrivateKey(privPath, pubPath)
 	}
 
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
@@ -339,6 +380,73 @@ func ensureLocalSSHKeyPair() error {
 	}
 	pubLine := string(ssh.MarshalAuthorizedKey(pubKey))
 	if err := os.WriteFile(pubPath, []byte(pubLine), 0o644); err != nil {
+		return fmt.Errorf("cannot write %s: %w", pubPath, err)
+	}
+	return nil
+}
+
+func ensureRSAKeyPair(privPath string) error {
+	pubPath := privPath + ".pub"
+	if err := ensureKeyPairDir(privPath); err != nil {
+		return err
+	}
+
+	privInfo, privErr := os.Stat(privPath)
+	pubInfo, pubErr := os.Stat(pubPath)
+	if privErr == nil && !privInfo.IsDir() && pubErr == nil && !pubInfo.IsDir() {
+		return nil
+	}
+
+	if privErr == nil && !privInfo.IsDir() && os.IsNotExist(pubErr) {
+		return writePublicKeyFromPrivateKey(privPath, pubPath)
+	}
+
+	priv, err := rsa.GenerateKey(rand.Reader, 3072)
+	if err != nil {
+		return fmt.Errorf("cannot generate rsa key: %w", err)
+	}
+
+	privDER, err := x509.MarshalPKCS8PrivateKey(priv)
+	if err != nil {
+		return fmt.Errorf("cannot encode private key: %w", err)
+	}
+	privPEM := pem.EncodeToMemory(&pem.Block{
+		Type:  "PRIVATE KEY",
+		Bytes: privDER,
+	})
+	if err := os.WriteFile(privPath, privPEM, 0o600); err != nil {
+		return fmt.Errorf("cannot write %s: %w", privPath, err)
+	}
+
+	pubKey, err := ssh.NewPublicKey(&priv.PublicKey)
+	if err != nil {
+		return fmt.Errorf("cannot encode public key: %w", err)
+	}
+	pubLine := string(ssh.MarshalAuthorizedKey(pubKey))
+	if err := os.WriteFile(pubPath, []byte(pubLine), 0o644); err != nil {
+		return fmt.Errorf("cannot write %s: %w", pubPath, err)
+	}
+	return nil
+}
+
+func ensureKeyPairDir(privPath string) error {
+	sshDir := filepath.Dir(privPath)
+	if err := os.MkdirAll(sshDir, 0o700); err != nil {
+		return fmt.Errorf("cannot create %s: %w", sshDir, err)
+	}
+	return nil
+}
+
+func writePublicKeyFromPrivateKey(privPath, pubPath string) error {
+	signer, err := readPrivateKeySigner(privPath)
+	if err != nil {
+		return fmt.Errorf("cannot read existing private key: %w", err)
+	}
+	pub := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(signer.PublicKey())))
+	if pub == "" {
+		return fmt.Errorf("derived public key is empty")
+	}
+	if err := os.WriteFile(pubPath, []byte(pub+"\n"), 0o644); err != nil {
 		return fmt.Errorf("cannot write %s: %w", pubPath, err)
 	}
 	return nil

@@ -1,8 +1,8 @@
 package components
 
 const (
-	ConnectLabel = "Connect"
-	FinishLabel  = "Finish"
+	ConnectLabel = "Onboard"
+	FinishLabel  = "Done"
 )
 
 type Phase int
@@ -65,6 +65,9 @@ type ViewState struct {
 	Steps       []Step
 	SpinnerRune rune
 
-	IP   Field
-	Pass Field
+	Target Field
+	Pass   Field
+
+	MobileQR    []string
+	MobileQRErr string
 }

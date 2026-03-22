@@ -14,20 +14,26 @@ const (
 	wgInterface = "wg0"
 	wgPort      = 51820
 
-	wgServerCIDR = "10.0.0.1/32"
-	wgClientCIDR = "10.0.0.2/32"
-	wgServerIP   = "10.0.0.1"
+	wgServerCIDR  = "10.0.0.1/32"
+	wgDesktopCIDR = "10.0.0.2/32"
+	wgMobileCIDR  = "10.0.0.3/32"
+	wgServerIP    = "10.0.0.1"
+	wgDesktopIP   = "10.0.0.2"
+	wgMobileIP    = "10.0.0.3"
 )
 
 type wgConfig struct {
-	ServerPriv string
-	ServerPub  string
-	ClientPriv string
-	ClientPub  string
+	ServerPriv       string
+	ServerPub        string
+	ClientPriv       string
+	ClientPub        string
+	MobileClientPriv string
+	MobileClientPub  string
 
-	ServerConf string
-	ClientConf string
-	Endpoint   string
+	ServerConf       string
+	ClientConf       string
+	MobileClientConf string
+	Endpoint         string
 }
 
 func buildWGConfig(endpointHost string) (wgConfig, error) {
@@ -44,6 +50,10 @@ func buildWGConfig(endpointHost string) (wgConfig, error) {
 	if err != nil {
 		return wgConfig{}, err
 	}
+	mPriv, mPub, err := genWGKeyPair()
+	if err != nil {
+		return wgConfig{}, err
+	}
 
 	endpoint := fmt.Sprintf("%s:%d", host, wgPort)
 	serverConf := strings.Join([]string{
@@ -54,13 +64,17 @@ func buildWGConfig(endpointHost string) (wgConfig, error) {
 		"",
 		"[Peer]",
 		"PublicKey = " + cPub,
-		"AllowedIPs = " + strings.Split(wgClientCIDR, "/")[0] + "/32",
+		"AllowedIPs = " + wgDesktopIP + "/32",
+		"",
+		"[Peer]",
+		"PublicKey = " + mPub,
+		"AllowedIPs = " + wgMobileIP + "/32",
 		"",
 	}, "\n")
 
 	clientConf := strings.Join([]string{
 		"[Interface]",
-		"Address = " + wgClientCIDR,
+		"Address = " + wgDesktopCIDR,
 		"PrivateKey = " + cPriv,
 		"",
 		"[Peer]",
@@ -71,14 +85,30 @@ func buildWGConfig(endpointHost string) (wgConfig, error) {
 		"",
 	}, "\n")
 
+	mobileClientConf := strings.Join([]string{
+		"[Interface]",
+		"Address = " + wgMobileCIDR,
+		"PrivateKey = " + mPriv,
+		"",
+		"[Peer]",
+		"PublicKey = " + sPub,
+		"Endpoint = " + endpoint,
+		"AllowedIPs = " + wgServerIP + "/32",
+		"PersistentKeepalive = 25",
+		"",
+	}, "\n")
+
 	return wgConfig{
-		ServerPriv: sPriv,
-		ServerPub:  sPub,
-		ClientPriv: cPriv,
-		ClientPub:  cPub,
-		ServerConf: serverConf,
-		ClientConf: clientConf,
-		Endpoint:   endpoint,
+		ServerPriv:       sPriv,
+		ServerPub:        sPub,
+		ClientPriv:       cPriv,
+		ClientPub:        cPub,
+		MobileClientPriv: mPriv,
+		MobileClientPub:  mPub,
+		ServerConf:       serverConf,
+		ClientConf:       clientConf,
+		MobileClientConf: mobileClientConf,
+		Endpoint:         endpoint,
 	}, nil
 }
 

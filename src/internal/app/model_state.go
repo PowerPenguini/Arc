@@ -44,7 +44,7 @@ type model struct {
 	w int
 	h int
 
-	focus     int // 0=ip, 1=pass, 2=connect
+	focus     int // 0=ssh-target, 1=password, 2=onboard
 	phase     setupPhase
 	logScroll int
 	working   bool
@@ -59,8 +59,8 @@ type model struct {
 	localSudoErr     string
 	wg               WGConfig
 
-	ip   components.Field
-	pass components.Field
+	target components.Field
+	pass   components.Field
 
 	bootstrapUser string
 	host          string
@@ -70,12 +70,16 @@ type model struct {
 
 	steps       []setupStep
 	spinnerTick int
+
+	mobilePayload string
+	mobileQR      []string
+	mobileQRErr   string
 }
 
 func NewModel(svc Services) tea.Model {
 	m := model{svc: svc}
-	m.ip = components.Field{Placeholder: "user@192.168.1.10"}
-	m.pass = components.Field{Placeholder: "password", Mask: true}
+	m.target = components.Field{Placeholder: "ssh://root@192.168.1.10:22"}
+	m.pass = components.Field{Placeholder: "optional password", Mask: true}
 	m.phase = phaseRemote
 	return m
 }
@@ -122,15 +126,14 @@ func (m *model) attemptSubmit() tea.Cmd {
 		return nil
 	}
 
-	target := strings.TrimSpace(m.ip.ValueString())
-	if target == "" || !strings.Contains(target, "@") {
-		m.err = "User@IP is required"
+	target := strings.TrimSpace(m.target.ValueString())
+	if target == "" {
+		m.err = "SSH target is required"
 		m.setFocus(0)
 		return nil
 	}
-	parts := strings.SplitN(target, "@", 2)
-	if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" || strings.TrimSpace(parts[1]) == "" {
-		m.err = "Use format: user@host"
+	if !strings.Contains(target, "@") {
+		m.err = "Use ssh://user@host[:port] or user@host[:port]"
 		m.setFocus(0)
 		return nil
 	}
@@ -149,7 +152,7 @@ func (m *model) attemptSubmit() tea.Cmd {
 	m.btnDown = false
 	m.btnHover = false
 
-	u, host, addr, err := m.svc.ParseSSHConnectTarget(target)
+	u, host, addr, err := m.svc.ParseSSHDeviceTarget(target)
 	if err != nil {
 		m.err = err.Error()
 		m.setFocus(0)
