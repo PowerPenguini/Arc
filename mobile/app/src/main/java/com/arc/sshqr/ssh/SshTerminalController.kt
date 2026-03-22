@@ -26,6 +26,7 @@ import java.io.EOFException
 import java.io.IOException
 import java.io.InterruptedIOException
 import java.io.OutputStream
+import java.nio.charset.Charset
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CancellationException
@@ -114,6 +115,7 @@ class SshTerminalController(
     private var remoteRows: Int = 0
     private var currentState: SessionConnectionState = SessionConnectionState.IDLE
     private var reconnectAttempt = 0
+    private var remoteQueryTail = ""
     @Volatile
     private var transportDisconnectMessage: String? = null
     private val debugTouchLogs = (appContext.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
@@ -439,9 +441,32 @@ class SshTerminalController(
         scope.launch(Dispatchers.Main.immediate) {
             val emulator = terminalSession?.emulator ?: return@launch
             emulator.append(chunk, chunk.size)
+            handleRemoteTerminalQueries(chunk, emulator)
             disableTouchMouseTracking()
             terminalView?.let(::refreshTerminalViewport)
         }
+    }
+
+    private fun handleRemoteTerminalQueries(chunk: ByteArray, emulator: com.termux.terminal.TerminalEmulator) {
+        val text = String(chunk, QUERY_CHARSET)
+        val combined = remoteQueryTail + text
+        val scanFrom = (remoteQueryTail.length - MAX_QUERY_SEQUENCE_LENGTH + 1).coerceAtLeast(0)
+
+        var index = combined.indexOf("\u001B[6n", scanFrom)
+        while (index >= 0) {
+            val row = emulator.cursorRow + 1
+            val col = emulator.cursorCol + 1
+            sendString("\u001B[${row};${col}R")
+            index = combined.indexOf("\u001B[6n", index + 1)
+        }
+
+        index = combined.indexOf("\u001B[5n", scanFrom)
+        while (index >= 0) {
+            sendString("\u001B[0n")
+            index = combined.indexOf("\u001B[5n", index + 1)
+        }
+
+        remoteQueryTail = combined.takeLast(MAX_QUERY_SEQUENCE_LENGTH)
     }
 
     private fun writeToRemote(bytes: ByteArray) {
@@ -1279,8 +1304,10 @@ class SshTerminalController(
         private const val ONE_FINGER_FLICK_MAX_DURATION_MS = 250L
         private const val TWO_FINGER_PINCH_MIN_DELTA_PX = 16f
         private const val TWO_FINGER_PINCH_DOMINANCE_RATIO = 1.35f
+        private val QUERY_CHARSET: Charset = StandardCharsets.ISO_8859_1
+        private const val MAX_QUERY_SEQUENCE_LENGTH = 8
         private const val REMOTE_WORKSPACE_COMMAND =
-            "env TERM=xterm-256color COLORTERM=truecolor sh -lc 'tmux attach-session -t arc || exec tmux new-session -s arc'"
+            "env TERM=xterm-256color COLORTERM=truecolor tmux new-session -A -D -s arc"
         private val RECONNECT_BACKOFF_MS = longArrayOf(1_000L, 2_000L, 4_000L)
         private val MOUSE_TRACKING_DECSET_CODES = intArrayOf(1000, 1001, 1002, 1003, 1004, 1005, 1006, 1015)
     }
