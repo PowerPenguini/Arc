@@ -26,7 +26,6 @@ import java.io.EOFException
 import java.io.IOException
 import java.io.InterruptedIOException
 import java.io.OutputStream
-import java.nio.charset.Charset
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CancellationException
@@ -115,7 +114,7 @@ class SshTerminalController(
     private var remoteRows: Int = 0
     private var currentState: SessionConnectionState = SessionConnectionState.IDLE
     private var reconnectAttempt = 0
-    private var remoteQueryTail = ""
+    private var remoteEscapeLogTail = ""
     @Volatile
     private var transportDisconnectMessage: String? = null
     private val debugTouchLogs = (appContext.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
@@ -139,7 +138,6 @@ class SshTerminalController(
         ensureTerminalSession()
 
         view.attachSession(checkNotNull(terminalSession))
-        disableTouchMouseTracking()
         restoreViewportAfterScreenUpdate(view)
         if (
             activeConfig != null &&
@@ -441,32 +439,24 @@ class SshTerminalController(
         scope.launch(Dispatchers.Main.immediate) {
             val emulator = terminalSession?.emulator ?: return@launch
             emulator.append(chunk, chunk.size)
-            handleRemoteTerminalQueries(chunk, emulator)
-            disableTouchMouseTracking()
+            logRemoteEscapeSequences(chunk)
             terminalView?.let(::refreshTerminalViewport)
         }
     }
 
-    private fun handleRemoteTerminalQueries(chunk: ByteArray, emulator: com.termux.terminal.TerminalEmulator) {
-        val text = String(chunk, QUERY_CHARSET)
-        val combined = remoteQueryTail + text
-        val scanFrom = (remoteQueryTail.length - MAX_QUERY_SEQUENCE_LENGTH + 1).coerceAtLeast(0)
-
-        var index = combined.indexOf("\u001B[6n", scanFrom)
-        while (index >= 0) {
-            val row = emulator.cursorRow + 1
-            val col = emulator.cursorCol + 1
-            sendString("\u001B[${row};${col}R")
-            index = combined.indexOf("\u001B[6n", index + 1)
+    private fun logRemoteEscapeSequences(chunk: ByteArray) {
+        if (!debugTouchLogs) {
+            return
         }
-
-        index = combined.indexOf("\u001B[5n", scanFrom)
-        while (index >= 0) {
-            sendString("\u001B[0n")
-            index = combined.indexOf("\u001B[5n", index + 1)
+        val text = remoteEscapeLogTail + String(chunk, StandardCharsets.ISO_8859_1)
+        val matches =
+            REMOTE_ESCAPE_REGEX.findAll(text)
+                .map { it.value.replace("\u001B", "<ESC>") }
+                .toList()
+        if (matches.isNotEmpty()) {
+            Log.d(TAG, "remote-escapes=${matches.joinToString(" | ")}")
         }
-
-        remoteQueryTail = combined.takeLast(MAX_QUERY_SEQUENCE_LENGTH)
+        remoteEscapeLogTail = text.takeLast(MAX_ESCAPE_LOG_TAIL)
     }
 
     private fun writeToRemote(bytes: ByteArray) {
@@ -656,7 +646,6 @@ class SshTerminalController(
 
     private inner class ControllerTerminalSessionClient : TerminalSessionClient {
         override fun onTextChanged(changedSession: TerminalSession?) {
-            disableTouchMouseTracking()
             terminalView?.post {
                 terminalView?.let(::refreshTerminalViewport)
             }
@@ -769,7 +758,6 @@ class SshTerminalController(
         override fun onLongPress(event: MotionEvent?): Boolean = false
 
         override fun onEmulatorSet() {
-            disableTouchMouseTracking()
             updateLastKnownTerminalSize()
             handleTerminalSizeChange(lastColumns, lastRows)
         }
@@ -876,7 +864,12 @@ class SshTerminalController(
     }
 
     private fun syncViewportState(view: TerminalView) {
-        val transcriptRows = terminalSession?.emulator?.screen?.activeTranscriptRows ?: return
+        val emulator = terminalSession?.emulator ?: return
+        if (emulator.isAlternateBufferActive) {
+            viewportState = TerminalViewportState()
+            return
+        }
+        val transcriptRows = emulator.screen.activeTranscriptRows
         viewportState = TerminalViewportLogic.syncState(
             topRow = view.topRow,
             transcriptRows = transcriptRows,
@@ -887,7 +880,16 @@ class SshTerminalController(
     }
 
     private fun restoreViewportAfterScreenUpdate(view: TerminalView) {
-        val transcriptRows = terminalSession?.emulator?.screen?.activeTranscriptRows ?: return
+        val emulator = terminalSession?.emulator ?: return
+        if (emulator.isAlternateBufferActive) {
+            viewportState = TerminalViewportState()
+            if (view.topRow != 0) {
+                view.setTopRow(0)
+                view.invalidate()
+            }
+            return
+        }
+        val transcriptRows = emulator.screen.activeTranscriptRows
         if (transcriptRows <= 0) {
             viewportState = TerminalViewportState()
             return
@@ -1272,13 +1274,6 @@ class SshTerminalController(
         }.getOrElse { fallback }
     }
 
-    private fun disableTouchMouseTracking() {
-        val emulator = terminalSession?.emulator ?: return
-        MOUSE_TRACKING_DECSET_CODES.forEach { code ->
-            emulator.doDecSetOrReset(false, code)
-        }
-    }
-
     private fun logTouchDebug(message: String) {
         if (debugTouchLogs) {
             Log.d(TAG, message)
@@ -1304,12 +1299,11 @@ class SshTerminalController(
         private const val ONE_FINGER_FLICK_MAX_DURATION_MS = 250L
         private const val TWO_FINGER_PINCH_MIN_DELTA_PX = 16f
         private const val TWO_FINGER_PINCH_DOMINANCE_RATIO = 1.35f
-        private val QUERY_CHARSET: Charset = StandardCharsets.ISO_8859_1
-        private const val MAX_QUERY_SEQUENCE_LENGTH = 8
+        private const val MAX_ESCAPE_LOG_TAIL = 64
+        private val REMOTE_ESCAPE_REGEX = Regex("\u001B\\[[0-9;?<>:=]*[ -/]*[@-~]")
         private const val REMOTE_WORKSPACE_COMMAND =
             "env TERM=xterm-256color COLORTERM=truecolor tmux new-session -A -D -s arc"
         private val RECONNECT_BACKOFF_MS = longArrayOf(1_000L, 2_000L, 4_000L)
-        private val MOUSE_TRACKING_DECSET_CODES = intArrayOf(1000, 1001, 1002, 1003, 1004, 1005, 1006, 1015)
     }
 
     private suspend fun establishConnection(
