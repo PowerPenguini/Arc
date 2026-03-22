@@ -17,6 +17,7 @@ import androidx.core.content.getSystemService
 import com.arc.sshqr.SessionConnectionState
 import com.arc.sshqr.qr.SshQrConfig
 import com.termux.terminal.KeyHandler
+import com.termux.terminal.TerminalOutput
 import com.termux.terminal.TerminalSession
 import com.termux.terminal.TerminalSessionClient
 import com.termux.view.TerminalView
@@ -96,6 +97,7 @@ class SshTerminalController(
     private var terminalView: TerminalView? = null
     private var terminalSession: TerminalSession? = null
     private var activeConfig: SshQrConfig? = null
+    private var terminalOutputProxyInstalled = false
 
     private var sshSession: Session? = null
     private var sshShell: Session.Command? = null
@@ -132,12 +134,14 @@ class SshTerminalController(
 
         terminalView = view
         view.keepScreenOn = true
-        view.setBackgroundColor(0xFF101313.toInt())
+        view.setBackgroundColor(TERMINAL_BACKGROUND_COLOR)
         view.setTerminalViewClient(terminalClient)
         view.setOnTouchListener(TerminalTouchInterceptor(view))
         ensureTerminalSession()
+        syncTerminalBackgroundPalette()
 
         view.attachSession(checkNotNull(terminalSession))
+        installTerminalOutputProxy()
         restoreViewportAfterScreenUpdate(view)
         if (
             activeConfig != null &&
@@ -247,6 +251,8 @@ class SshTerminalController(
             2_000,
             sessionClient,
         )
+        terminalOutputProxyInstalled = false
+        syncTerminalBackgroundPalette()
     }
 
     fun disconnect() {
@@ -1274,6 +1280,84 @@ class SshTerminalController(
         }.getOrElse { fallback }
     }
 
+    private fun syncTerminalBackgroundPalette() {
+        val session = terminalSession ?: return
+        runCatching {
+            val emulatorField = session.javaClass.getDeclaredField("mEmulator")
+            emulatorField.isAccessible = true
+            val emulator = emulatorField.get(session) ?: return
+
+            val colorsField = emulator.javaClass.getDeclaredField("mColors")
+            colorsField.isAccessible = true
+            val colors = colorsField.get(emulator) ?: return
+
+            val currentColorsField = colors.javaClass.getDeclaredField("mCurrentColors")
+            currentColorsField.isAccessible = true
+            val currentColors = currentColorsField.get(colors) as? IntArray ?: return
+
+            if (currentColors.size > TERMINAL_COLOR_INDEX_BACKGROUND) {
+                currentColors[TERMINAL_COLOR_INDEX_BACKGROUND] = TERMINAL_BACKGROUND_COLOR
+            }
+        }.onFailure {
+            Log.w(TAG, "Unable to sync terminal background palette", it)
+        }
+        terminalView?.invalidate()
+    }
+
+    private fun installTerminalOutputProxy() {
+        if (terminalOutputProxyInstalled) {
+            return
+        }
+        val session = terminalSession ?: return
+        runCatching {
+            val emulatorField = session.javaClass.getDeclaredField("mEmulator")
+            emulatorField.isAccessible = true
+            val emulator = emulatorField.get(session) ?: return
+
+            val sessionField = emulator.javaClass.getDeclaredField("mSession")
+            sessionField.isAccessible = true
+            sessionField.set(emulator, RemoteAwareTerminalOutput(session))
+            terminalOutputProxyInstalled = true
+        }.onFailure {
+            Log.w(TAG, "Unable to install terminal output proxy", it)
+        }
+    }
+
+    private inner class RemoteAwareTerminalOutput(
+        private val delegate: TerminalSession,
+    ) : TerminalOutput() {
+        override fun write(data: ByteArray, offset: Int, count: Int) {
+            if (count <= 0) {
+                return
+            }
+            if (connected.get()) {
+                writeToRemote(data.copyOfRange(offset, offset + count))
+            } else {
+                delegate.write(data, offset, count)
+            }
+        }
+
+        override fun titleChanged(oldTitle: String?, newTitle: String?) {
+            delegate.titleChanged(oldTitle, newTitle)
+        }
+
+        override fun onCopyTextToClipboard(text: String?) {
+            delegate.onCopyTextToClipboard(text)
+        }
+
+        override fun onPasteTextFromClipboard() {
+            delegate.onPasteTextFromClipboard()
+        }
+
+        override fun onBell() {
+            delegate.onBell()
+        }
+
+        override fun onColorsChanged() {
+            delegate.onColorsChanged()
+        }
+    }
+
     private fun logTouchDebug(message: String) {
         if (debugTouchLogs) {
             Log.d(TAG, message)
@@ -1284,6 +1368,7 @@ class SshTerminalController(
         private const val TAG = "SshTerminalController"
         private const val TERMINAL_PREFS_NAME = "terminal_prefs"
         private const val KEY_TERMINAL_FONT_SIZE_SP = "terminal_font_size_sp"
+        private const val TERMINAL_COLOR_INDEX_BACKGROUND = 257
         private const val MAX_RECONNECT_ATTEMPTS = 3
         private const val DEFAULT_TERMINAL_FONT_SIZE_SP = 12f
         private const val MIN_TERMINAL_FONT_SIZE_SP = 8f
@@ -1300,6 +1385,7 @@ class SshTerminalController(
         private const val TWO_FINGER_PINCH_MIN_DELTA_PX = 16f
         private const val TWO_FINGER_PINCH_DOMINANCE_RATIO = 1.35f
         private const val MAX_ESCAPE_LOG_TAIL = 64
+        private const val TERMINAL_BACKGROUND_COLOR = 0xFF101313.toInt()
         private val REMOTE_ESCAPE_REGEX = Regex("\u001B\\[[0-9;?<>:=]*[ -/]*[@-~]")
         private const val REMOTE_WORKSPACE_COMMAND =
             "env TERM=xterm-256color COLORTERM=truecolor tmux new-session -A -D -s arc"
