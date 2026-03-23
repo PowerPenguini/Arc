@@ -730,6 +730,9 @@ class SshTerminalController(
         }
 
         override fun onKeyDown(keyCode: Int, e: KeyEvent?, session: TerminalSession?): Boolean {
+            if (TerminalKeyPolicy.shouldLetSystemHandle(keyCode)) {
+                return false
+            }
             val modifiers = consumeToolbarModifiers()
             if (modifiers.alt) {
                 sendString("\u001B")

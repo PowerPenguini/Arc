@@ -10,6 +10,7 @@ import android.util.Log
 import android.util.TypedValue
 import android.view.inputmethod.InputMethodManager
 import androidx.activity.ComponentActivity
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -100,6 +101,18 @@ private val TerminalToolbarButtonActiveBackground = Color(0xFF222A18)
 class MainActivity : ComponentActivity() {
 
     private val viewModel: MainViewModel by viewModels()
+    private val sessionBackCallback =
+        object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                if (viewModel.uiState.screen == MainScreenRoute.Session) {
+                    viewModel.showMenu()
+                    return
+                }
+                isEnabled = false
+                onBackPressedDispatcher.onBackPressed()
+                isEnabled = true
+            }
+        }
 
     private val scanner: GmsBarcodeScanner by lazy {
         val options = GmsBarcodeScannerOptions.Builder()
@@ -126,6 +139,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Log.d(TAG, "onCreate savedInstanceState=${savedInstanceState != null}")
+        onBackPressedDispatcher.addCallback(this, sessionBackCallback)
         enableImmersiveMode()
 
         setContent {
