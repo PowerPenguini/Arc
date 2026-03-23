@@ -923,15 +923,17 @@ class SshTerminalController(
         private var activeArrowKeyCode: Int? = null
         private var activeArrowGesture = false
         private var activeTwoFingerScroll = false
-        private var activePinchGesture = false
         private var twoFingerPointerId1 = MotionEvent.INVALID_POINTER_ID
         private var twoFingerPointerId2 = MotionEvent.INVALID_POINTER_ID
+        private var twoFingerStartY1 = 0f
+        private var twoFingerStartY2 = 0f
+        private var twoFingerStartX1 = 0f
+        private var twoFingerStartX2 = 0f
         private var twoFingerLastY1 = 0f
         private var twoFingerLastY2 = 0f
         private var twoFingerLastX1 = 0f
         private var twoFingerLastX2 = 0f
         private var twoFingerLastFocusY = 0f
-        private var twoFingerLastSpan = 0f
         private var twoFingerScrollRemainder = 0f
         override fun onTouch(v: View?, event: MotionEvent): Boolean {
             logTouchDebug(
@@ -1033,7 +1035,6 @@ class SshTerminalController(
                     if (event.pointerCount >= 2) {
                         suppressNextSingleFingerUp = true
                         initializeTwoFingerTracking(event)
-                        activePinchGesture = false
                         logTouchDebug("twoFingerTrack start pointers=${event.pointerCount}")
                         return true
                     }
@@ -1041,58 +1042,37 @@ class SshTerminalController(
 
                 MotionEvent.ACTION_MOVE -> {
                     if (event.pointerCount < 2) {
-                        return activeTwoFingerScroll || activePinchGesture
+                        return activeTwoFingerScroll
                     }
-                    val deltas = readTwoFingerDeltas(event) ?: return false
-                    if (!activeTwoFingerScroll && !activePinchGesture) {
-                        val maxVerticalTravel = maxOf(
-                            kotlin.math.abs(deltas.deltaY1),
-                            kotlin.math.abs(deltas.deltaY2),
-                        )
-                        val pinchDominates = kotlin.math.abs(deltas.spanDelta) > maxVerticalTravel * TWO_FINGER_PINCH_DOMINANCE_RATIO
+                    val metrics = readTwoFingerMetrics(event) ?: return true
+                    if (!activeTwoFingerScroll) {
                         if (
                             TerminalTouchPolicy.shouldStartTwoFingerScroll(
-                                deltaX1 = deltas.deltaX1,
-                                deltaY1 = deltas.deltaY1,
-                                deltaX2 = deltas.deltaX2,
-                                deltaY2 = deltas.deltaY2,
-                                spanDelta = deltas.spanDelta,
+                                totalDeltaX1 = metrics.totalDeltaX1,
+                                totalDeltaY1 = metrics.totalDeltaY1,
+                                totalDeltaX2 = metrics.totalDeltaX2,
+                                totalDeltaY2 = metrics.totalDeltaY2,
                             )
                         ) {
                             activeTwoFingerScroll = true
                             twoFingerScrollRemainder = 0f
-                            logTouchDebug("twoFingerScroll start dy1=${deltas.deltaY1} dy2=${deltas.deltaY2}")
-                        } else if (
-                            kotlin.math.abs(deltas.spanDelta) >= TWO_FINGER_PINCH_MIN_DELTA_PX &&
-                            pinchDominates
-                        ) {
-                            activePinchGesture = true
-                            logTouchDebug("pinchGesture start spanDelta=${deltas.spanDelta}")
+                            twoFingerLastFocusY = metrics.focusY
+                            logTouchDebug(
+                                "twoFingerScroll start totalDy1=${metrics.totalDeltaY1} totalDy2=${metrics.totalDeltaY2}",
+                            )
                         } else {
-                            updateTwoFingerTracking(event)
+                            updateTwoFingerTracking(metrics)
                             return true
                         }
                     }
 
-                    if (activePinchGesture) {
-                        val currentSpan = currentPointerSpan(event) ?: return true
-                        val previousSpan = twoFingerLastSpan.takeIf { it > 0f } ?: currentSpan
-                        val scale = currentSpan / previousSpan
-                        if (scale.isFinite() && scale > 0f) {
-                            applyTerminalScale(scale)
-                        }
-                        updateTwoFingerTracking(event)
-                        return true
-                    }
-
-                    val focusY = averagePointerY(event)
-                    val distanceY = focusY - twoFingerLastFocusY
+                    val distanceY = metrics.focusY - twoFingerLastFocusY
                     val lineHeightPx = ((view.getPointY(1) - view.getPointY(0)).takeIf { it > 0 } ?: CELL_HEIGHT_PX).toFloat()
                     val scrollRows = ((twoFingerScrollRemainder + distanceY) / lineHeightPx).toInt()
-                    twoFingerScrollRemainder += distanceY - (scrollRows * lineHeightPx)
-                    updateTwoFingerTracking(event)
+                    twoFingerScrollRemainder = (twoFingerScrollRemainder + distanceY) - (scrollRows * lineHeightPx)
+                    updateTwoFingerTracking(metrics)
                     if (scrollRows != 0) {
-                        scrollViewportRows(view, scrollRows)
+                        dispatchTwoFingerScroll(view, event, scrollRows)
                     }
                     return true
                 }
@@ -1105,7 +1085,7 @@ class SshTerminalController(
                         } else {
                             clearTwoFingerTracking()
                         }
-                        return false
+                        return true
                     }
                     if (event.pointerCount - 1 >= 2) {
                         initializeTwoFingerTrackingExcluding(event, event.actionIndex)
@@ -1132,17 +1112,8 @@ class SshTerminalController(
                 logTouchDebug("twoFingerScroll end")
             }
             activeTwoFingerScroll = false
-            activePinchGesture = false
             twoFingerScrollRemainder = 0f
             clearTwoFingerTracking()
-        }
-
-        private fun averagePointerY(event: MotionEvent): Float {
-            var sum = 0f
-            for (index in 0 until event.pointerCount) {
-                sum += event.getY(index)
-            }
-            return sum / event.pointerCount.toFloat()
         }
 
         private fun initializeTwoFingerTracking(event: MotionEvent) {
@@ -1152,12 +1123,19 @@ class SshTerminalController(
             }
             twoFingerPointerId1 = event.getPointerId(0)
             twoFingerPointerId2 = event.getPointerId(1)
-            twoFingerLastX1 = event.getX(0)
-            twoFingerLastY1 = event.getY(0)
-            twoFingerLastX2 = event.getX(1)
-            twoFingerLastY2 = event.getY(1)
-            twoFingerLastFocusY = averagePointerY(event)
-            twoFingerLastSpan = pointerSpan(event, 0, 1)
+            val firstX = event.getX(0)
+            val firstY = event.getY(0)
+            val secondX = event.getX(1)
+            val secondY = event.getY(1)
+            twoFingerStartX1 = firstX
+            twoFingerStartY1 = firstY
+            twoFingerStartX2 = secondX
+            twoFingerStartY2 = secondY
+            twoFingerLastX1 = firstX
+            twoFingerLastY1 = firstY
+            twoFingerLastX2 = secondX
+            twoFingerLastY2 = secondY
+            twoFingerLastFocusY = (firstY + secondY) / 2f
         }
 
         private fun initializeTwoFingerTrackingExcluding(event: MotionEvent, excludedIndex: Int) {
@@ -1182,15 +1160,22 @@ class SshTerminalController(
             }
             twoFingerPointerId1 = event.getPointerId(firstIndex)
             twoFingerPointerId2 = event.getPointerId(secondIndex)
-            twoFingerLastX1 = event.getX(firstIndex)
-            twoFingerLastY1 = event.getY(firstIndex)
-            twoFingerLastX2 = event.getX(secondIndex)
-            twoFingerLastY2 = event.getY(secondIndex)
-            twoFingerLastFocusY = (twoFingerLastY1 + twoFingerLastY2) / 2f
-            twoFingerLastSpan = pointerSpan(event, firstIndex, secondIndex)
+            val firstX = event.getX(firstIndex)
+            val firstY = event.getY(firstIndex)
+            val secondX = event.getX(secondIndex)
+            val secondY = event.getY(secondIndex)
+            twoFingerStartX1 = firstX
+            twoFingerStartY1 = firstY
+            twoFingerStartX2 = secondX
+            twoFingerStartY2 = secondY
+            twoFingerLastX1 = firstX
+            twoFingerLastY1 = firstY
+            twoFingerLastX2 = secondX
+            twoFingerLastY2 = secondY
+            twoFingerLastFocusY = (firstY + secondY) / 2f
         }
 
-        private fun readTwoFingerDeltas(event: MotionEvent): TwoFingerDeltas? {
+        private fun readTwoFingerMetrics(event: MotionEvent): TwoFingerMetrics? {
             val index1 = event.findPointerIndex(twoFingerPointerId1)
             val index2 = event.findPointerIndex(twoFingerPointerId2)
             if (index1 < 0 || index2 < 0) {
@@ -1201,65 +1186,73 @@ class SshTerminalController(
             val currentY1 = event.getY(index1)
             val currentX2 = event.getX(index2)
             val currentY2 = event.getY(index2)
-            val currentSpan = pointerSpan(event, index1, index2)
-            return TwoFingerDeltas(
-                deltaX1 = currentX1 - twoFingerLastX1,
-                deltaY1 = currentY1 - twoFingerLastY1,
-                deltaX2 = currentX2 - twoFingerLastX2,
-                deltaY2 = currentY2 - twoFingerLastY2,
-                spanDelta = currentSpan - twoFingerLastSpan,
+            return TwoFingerMetrics(
+                currentX1 = currentX1,
+                currentY1 = currentY1,
+                currentX2 = currentX2,
+                currentY2 = currentY2,
+                totalDeltaX1 = currentX1 - twoFingerStartX1,
+                totalDeltaY1 = currentY1 - twoFingerStartY1,
+                totalDeltaX2 = currentX2 - twoFingerStartX2,
+                totalDeltaY2 = currentY2 - twoFingerStartY2,
+                focusY = (currentY1 + currentY2) / 2f,
             )
         }
 
-        private fun updateTwoFingerTracking(event: MotionEvent) {
-            val index1 = event.findPointerIndex(twoFingerPointerId1)
-            val index2 = event.findPointerIndex(twoFingerPointerId2)
-            if (index1 < 0 || index2 < 0) {
-                initializeTwoFingerTracking(event)
-                return
-            }
-            twoFingerLastX1 = event.getX(index1)
-            twoFingerLastY1 = event.getY(index1)
-            twoFingerLastX2 = event.getX(index2)
-            twoFingerLastY2 = event.getY(index2)
-            twoFingerLastFocusY = (twoFingerLastY1 + twoFingerLastY2) / 2f
-            twoFingerLastSpan = pointerSpan(event, index1, index2)
+        private fun updateTwoFingerTracking(metrics: TwoFingerMetrics) {
+            twoFingerLastX1 = metrics.currentX1
+            twoFingerLastY1 = metrics.currentY1
+            twoFingerLastX2 = metrics.currentX2
+            twoFingerLastY2 = metrics.currentY2
+            twoFingerLastFocusY = metrics.focusY
         }
 
         private fun clearTwoFingerTracking() {
             twoFingerPointerId1 = MotionEvent.INVALID_POINTER_ID
             twoFingerPointerId2 = MotionEvent.INVALID_POINTER_ID
+            twoFingerStartX1 = 0f
+            twoFingerStartY1 = 0f
+            twoFingerStartX2 = 0f
+            twoFingerStartY2 = 0f
             twoFingerLastX1 = 0f
             twoFingerLastY1 = 0f
             twoFingerLastX2 = 0f
             twoFingerLastY2 = 0f
             twoFingerLastFocusY = 0f
-            twoFingerLastSpan = 0f
         }
 
-        private fun pointerSpan(event: MotionEvent, firstIndex: Int, secondIndex: Int): Float {
-            val dx = event.getX(firstIndex) - event.getX(secondIndex)
-            val dy = event.getY(firstIndex) - event.getY(secondIndex)
-            return kotlin.math.sqrt((dx * dx) + (dy * dy))
-        }
-
-        private fun currentPointerSpan(event: MotionEvent): Float? {
-            val index1 = event.findPointerIndex(twoFingerPointerId1)
-            val index2 = event.findPointerIndex(twoFingerPointerId2)
-            if (index1 < 0 || index2 < 0) {
-                return null
+        private fun dispatchTwoFingerScroll(view: TerminalView, event: MotionEvent, scrollRows: Int) {
+            val emulator = terminalSession?.emulator ?: return
+            if (emulator.isMouseTrackingActive()) {
+                val point = view.getColumnAndRow(event, false)
+                val column = point[0] + 1
+                val row = point[1] + 1
+                val button =
+                    if (scrollRows < 0) {
+                        com.termux.terminal.TerminalEmulator.MOUSE_WHEELDOWN_BUTTON
+                    } else {
+                        com.termux.terminal.TerminalEmulator.MOUSE_WHEELUP_BUTTON
+                    }
+                repeat(kotlin.math.abs(scrollRows)) {
+                    emulator.sendMouseEvent(button, column, row, true)
+                }
+                return
             }
-            return pointerSpan(event, index1, index2)
+            scrollViewportRows(view, scrollRows)
         }
 
     }
 
-    private data class TwoFingerDeltas(
-        val deltaX1: Float,
-        val deltaY1: Float,
-        val deltaX2: Float,
-        val deltaY2: Float,
-        val spanDelta: Float,
+    private data class TwoFingerMetrics(
+        val currentX1: Float,
+        val currentY1: Float,
+        val currentX2: Float,
+        val currentY2: Float,
+        val totalDeltaX1: Float,
+        val totalDeltaY1: Float,
+        val totalDeltaX2: Float,
+        val totalDeltaY2: Float,
+        val focusY: Float,
     )
 
     private fun scrollViewportRows(view: TerminalView, rowsDelta: Int) {
@@ -1382,8 +1375,6 @@ class SshTerminalController(
         private const val CELL_HEIGHT_PX = 18
         private const val TAP_SLOP_PX = 24f
         private const val ONE_FINGER_FLICK_MAX_DURATION_MS = 250L
-        private const val TWO_FINGER_PINCH_MIN_DELTA_PX = 16f
-        private const val TWO_FINGER_PINCH_DOMINANCE_RATIO = 1.35f
         private const val MAX_ESCAPE_LOG_TAIL = 64
         private const val TERMINAL_BACKGROUND_COLOR = 0xFF101313.toInt()
         private val REMOTE_ESCAPE_REGEX = Regex("\u001B\\[[0-9;?<>:=]*[ -/]*[@-~]")

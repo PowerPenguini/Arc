@@ -40,32 +40,29 @@ internal object TerminalTouchPolicy {
     }
 
     fun shouldStartTwoFingerScroll(
-        deltaX1: Float,
-        deltaY1: Float,
-        deltaX2: Float,
-        deltaY2: Float,
-        spanDelta: Float,
+        totalDeltaX1: Float,
+        totalDeltaY1: Float,
+        totalDeltaX2: Float,
+        totalDeltaY2: Float,
     ): Boolean {
-        val absY1 = kotlin.math.abs(deltaY1)
-        val absY2 = kotlin.math.abs(deltaY2)
-        val maxTravel = maxOf(absY1, absY2)
-        if (maxTravel < TWO_FINGER_SCROLL_MIN_DISTANCE_PX) {
+        val absY1 = kotlin.math.abs(totalDeltaY1)
+        val absY2 = kotlin.math.abs(totalDeltaY2)
+        val averageVerticalTravel = (absY1 + absY2) / 2f
+        if (averageVerticalTravel < TWO_FINGER_SCROLL_MIN_DISTANCE_PX) {
             return false
         }
-        val movingTogetherVertically =
-            (absY1 >= TWO_FINGER_SCROLL_MIN_DISTANCE_PX && absY2 >= TWO_FINGER_SCROLL_MIN_DISTANCE_PX && deltaY1 * deltaY2 > 0f) ||
-                absY1 >= TWO_FINGER_SCROLL_MIN_DISTANCE_PX * 2f ||
-                absY2 >= TWO_FINGER_SCROLL_MIN_DISTANCE_PX * 2f
-        if (!movingTogetherVertically) {
+        if (totalDeltaY1 == 0f || totalDeltaY2 == 0f || totalDeltaY1 * totalDeltaY2 <= 0f) {
             return false
         }
-        if (absY1 >= TWO_FINGER_SCROLL_MIN_DISTANCE_PX && absY1 < kotlin.math.abs(deltaX1) * TWO_FINGER_SCROLL_DIRECTION_BIAS) {
+        val averageHorizontalTravel = (kotlin.math.abs(totalDeltaX1) + kotlin.math.abs(totalDeltaX2)) / 2f
+        if (averageVerticalTravel < averageHorizontalTravel * TWO_FINGER_SCROLL_DIRECTION_BIAS) {
             return false
         }
-        if (absY2 >= TWO_FINGER_SCROLL_MIN_DISTANCE_PX && absY2 < kotlin.math.abs(deltaX2) * TWO_FINGER_SCROLL_DIRECTION_BIAS) {
+        val verticalTravelGap = kotlin.math.abs(absY1 - absY2)
+        if (verticalTravelGap > averageVerticalTravel * TWO_FINGER_SCROLL_VERTICAL_ALIGNMENT_TOLERANCE_RATIO + TWO_FINGER_SCROLL_VERTICAL_ALIGNMENT_TOLERANCE_PX) {
             return false
         }
-        return kotlin.math.abs(spanDelta) <= maxTravel * TWO_FINGER_PINCH_TOLERANCE_RATIO + TWO_FINGER_PINCH_TOLERANCE_PX
+        return true
     }
 
     fun resolveArrowKeyCode(deltaX: Float, deltaY: Float): Int? {
@@ -83,8 +80,8 @@ internal object TerminalTouchPolicy {
 
     private const val SWIPE_ARROW_MIN_DISTANCE_PX = 96
     private const val SWIPE_ARROW_DIRECTION_BIAS = 1.4f
-    private const val TWO_FINGER_SCROLL_MIN_DISTANCE_PX = 12f
-    private const val TWO_FINGER_SCROLL_DIRECTION_BIAS = 1.2f
-    private const val TWO_FINGER_PINCH_TOLERANCE_RATIO = 0.6f
-    private const val TWO_FINGER_PINCH_TOLERANCE_PX = 12f
+    private const val TWO_FINGER_SCROLL_MIN_DISTANCE_PX = 10f
+    private const val TWO_FINGER_SCROLL_DIRECTION_BIAS = 1.05f
+    private const val TWO_FINGER_SCROLL_VERTICAL_ALIGNMENT_TOLERANCE_RATIO = 0.7f
+    private const val TWO_FINGER_SCROLL_VERTICAL_ALIGNMENT_TOLERANCE_PX = 18f
 }

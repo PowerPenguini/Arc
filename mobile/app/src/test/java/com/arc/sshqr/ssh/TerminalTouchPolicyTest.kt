@@ -115,7 +115,7 @@ class TerminalTouchPolicyTest {
     }
 
     @Test
-    fun `multi touch is passed through to allow pinch handling`() {
+    fun `multi touch is passed through to custom two finger handler`() {
         assertFalse(
             TerminalTouchPolicy.shouldConsumeEvent(
                 actionMasked = MotionEvent.ACTION_MOVE,
@@ -134,24 +134,46 @@ class TerminalTouchPolicyTest {
     fun `two finger parallel vertical move starts two finger scroll`() {
         assertTrue(
             TerminalTouchPolicy.shouldStartTwoFingerScroll(
-                deltaX1 = 3f,
-                deltaY1 = 28f,
-                deltaX2 = -2f,
-                deltaY2 = 24f,
-                spanDelta = 4f,
+                totalDeltaX1 = 3f,
+                totalDeltaY1 = 28f,
+                totalDeltaX2 = -2f,
+                totalDeltaY2 = 24f,
             ),
         )
     }
 
     @Test
-    fun `pinch does not get treated as two finger scroll`() {
+    fun `slow parallel vertical move still starts two finger scroll`() {
+        assertTrue(
+            TerminalTouchPolicy.shouldStartTwoFingerScroll(
+                totalDeltaX1 = 2f,
+                totalDeltaY1 = 11f,
+                totalDeltaX2 = -1f,
+                totalDeltaY2 = 10f,
+            ),
+        )
+    }
+
+    @Test
+    fun `opposing two finger motion does not get treated as scroll`() {
         assertFalse(
             TerminalTouchPolicy.shouldStartTwoFingerScroll(
-                deltaX1 = -20f,
-                deltaY1 = 8f,
-                deltaX2 = 22f,
-                deltaY2 = -6f,
-                spanDelta = 40f,
+                totalDeltaX1 = -20f,
+                totalDeltaY1 = 14f,
+                totalDeltaX2 = 22f,
+                totalDeltaY2 = -12f,
+            ),
+        )
+    }
+
+    @Test
+    fun `mostly horizontal two finger motion does not get treated as scroll`() {
+        assertFalse(
+            TerminalTouchPolicy.shouldStartTwoFingerScroll(
+                totalDeltaX1 = 26f,
+                totalDeltaY1 = 12f,
+                totalDeltaX2 = 24f,
+                totalDeltaY2 = 10f,
             ),
         )
     }

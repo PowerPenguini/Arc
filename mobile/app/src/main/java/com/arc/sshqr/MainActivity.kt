@@ -90,6 +90,13 @@ private val SharpShape = RoundedCornerShape(0.dp)
 private const val FORGET_HOLD_DURATION_MS = 10_000L
 private const val FORGET_HOLD_TICK_MS = 50L
 private val TerminalToolbarHeight = 56.dp
+private val TerminalToolbarBorder = Color(0xFF202628)
+private val TerminalToolbarBackground = Color(0xFF101313)
+private val TerminalToolbarButtonBorder = Color(0xFF2A3134)
+private val TerminalToolbarButtonBackground = Color(0xFF171C1E)
+private val TerminalToolbarButtonText = Color(0xFFD8DADF)
+private val TerminalToolbarButtonMutedText = Color(0xFF9EA4AF)
+private val TerminalToolbarButtonActiveBackground = Color(0xFF222A18)
 class MainActivity : ComponentActivity() {
 
     private val viewModel: MainViewModel by viewModels()
@@ -760,8 +767,8 @@ private fun TerminalToolbar(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .border(1.dp, Color(0xFF15171C), SharpShape)
-            .background(Color(0xFF0E1115))
+            .border(1.dp, TerminalToolbarBorder, SharpShape)
+            .background(TerminalToolbarBackground)
             .horizontalScroll(scrollState)
             .padding(horizontal = 8.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -811,8 +818,8 @@ private fun TerminalToolbarButton(
 ) {
     Row(
         modifier = Modifier
-            .border(1.dp, if (active) ArcTerminalAccent else Color(0xFF20252D), SharpShape)
-            .background(if (active) Color(0xFF1A2118) else Color(0xFF15191F))
+            .border(1.dp, if (active) ArcTerminalAccent else TerminalToolbarButtonBorder, SharpShape)
+            .background(if (active) TerminalToolbarButtonActiveBackground else TerminalToolbarButtonBackground)
             .clickable(onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -822,7 +829,7 @@ private fun TerminalToolbarButton(
             style = MaterialTheme.typography.bodyMedium,
             fontFamily = ArcTerminalFontFamily,
             fontWeight = FontWeight.Medium,
-            color = if (active) ArcTerminalAccent else Color(0xFFD8DADF),
+            color = if (active) ArcTerminalAccent else TerminalToolbarButtonText,
         )
     }
 }
