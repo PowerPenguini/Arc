@@ -128,15 +128,14 @@ class SshTerminalController(
     }
 
     fun bind(view: TerminalView) {
-        if (terminalView === view) {
-            return
-        }
-
+        val isNewView = terminalView !== view
         terminalView = view
-        view.keepScreenOn = true
-        view.setBackgroundColor(TERMINAL_BACKGROUND_COLOR)
-        view.setTerminalViewClient(terminalClient)
-        view.setOnTouchListener(TerminalTouchInterceptor(view))
+        if (isNewView) {
+            view.keepScreenOn = true
+            view.setBackgroundColor(TERMINAL_BACKGROUND_COLOR)
+            view.setTerminalViewClient(terminalClient)
+            view.setOnTouchListener(TerminalTouchInterceptor(view))
+        }
         ensureTerminalSession()
         syncTerminalBackgroundPalette()
 
@@ -253,6 +252,7 @@ class SshTerminalController(
         )
         terminalOutputProxyInstalled = false
         syncTerminalBackgroundPalette()
+        installTerminalOutputProxy()
     }
 
     fun disconnect() {
@@ -1379,7 +1379,8 @@ class SshTerminalController(
         private const val TERMINAL_BACKGROUND_COLOR = 0xFF101313.toInt()
         private val REMOTE_ESCAPE_REGEX = Regex("\u001B\\[[0-9;?<>:=]*[ -/]*[@-~]")
         private const val REMOTE_WORKSPACE_COMMAND =
-            "env TERM=xterm-256color COLORTERM=truecolor tmux new-session -A -D -s arc"
+            "env TERM=xterm-256color COLORTERM=truecolor " +
+                "sh -lc 'tmux has-session -t arc 2>/dev/null || tmux new-session -d -s arc; exec tmux attach-session -d -t arc'"
         private val RECONNECT_BACKOFF_MS = longArrayOf(1_000L, 2_000L, 4_000L)
     }
 
@@ -1388,6 +1389,7 @@ class SshTerminalController(
         isReconnect: Boolean,
     ) {
         try {
+            awaitTerminalReadyForHandshake()
             appendStatusLine("Opening shared SSH transport...")
             val ssh = connectionManager.ensureConnected(
                 config = config,
@@ -1441,6 +1443,12 @@ class SshTerminalController(
             } else {
                 handleConnectionFailure(throwable)
             }
+        }
+    }
+
+    private suspend fun awaitTerminalReadyForHandshake() {
+        while (terminalView == null) {
+            delay(16)
         }
     }
 
