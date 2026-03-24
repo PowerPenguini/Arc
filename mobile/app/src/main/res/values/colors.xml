@@ -1,4 +1,5 @@
 <resources>
+    <color name="splash_bg">#000000</color>
     <color name="surface_shell">#F6F4EF</color>
     <color name="surface_card">#FFFCF6</color>
     <color name="surface_border">#DDD5C7</color>

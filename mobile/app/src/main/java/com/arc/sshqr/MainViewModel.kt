@@ -8,6 +8,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.arc.sshqr.files.FilesUiState
 import com.arc.sshqr.files.RemoteFileEntry
 import com.arc.sshqr.files.RemoteFilesRepository
 import com.arc.sshqr.files.RemotePathUtils
@@ -54,17 +55,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         callbacks = object : SshTerminalController.Callbacks {
             override fun onStatusChanged(status: String) {
                 Log.d(TAG, "onStatusChanged: $status")
-                uiState = uiState.copy(status = status)
+                updateUiState { copy(status = status) }
             }
 
             override fun onSessionStateChanged(state: SessionConnectionState) {
                 Log.d(TAG, "onSessionStateChanged: $state")
-                uiState = uiState.copy(sessionState = state)
+                updateUiState { copy(sessionState = state) }
             }
 
             override fun onConnected(config: SshQrConfig) {
                 Log.d(TAG, "onConnected: ${config.username}@${config.host}:${config.port}")
-                uiState = uiState.copy(
+                updateUiState {
+                    copy(
                     screen = when (uiState.screen) {
                         MainScreenRoute.Session -> MainScreenRoute.Session
                         MainScreenRoute.Files -> MainScreenRoute.Files
@@ -75,25 +77,32 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     sessionState = SessionConnectionState.CONNECTED,
                     error = null,
                 )
+                }
             }
 
             override fun onDisconnected(message: String) {
                 Log.d(TAG, "onDisconnected: $message")
-                uiState = uiState.copy(
+                updateUiState {
+                    copy(
                     screen = if (uiState.config != null) MainScreenRoute.Menu else MainScreenRoute.Scan,
                     status = message,
                     sessionState = SessionConnectionState.DISCONNECTED,
+                    vpnTunnelName = null,
                 )
+                }
             }
 
             override fun onConnectionFailed(message: String) {
                 Log.e(TAG, "onConnectionFailed: $message")
-                uiState = uiState.copy(
+                updateUiState {
+                    copy(
                     screen = if (uiState.config != null) MainScreenRoute.Menu else MainScreenRoute.Scan,
                     status = "SSH failed",
                     sessionState = SessionConnectionState.FAILED,
                     error = message,
+                    vpnTunnelName = null,
                 )
+                }
             }
         },
         prepareReconnectTransport = { config ->
@@ -114,18 +123,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun onScanStarted() {
         Log.d(TAG, "onScanStarted")
-        uiState = uiState.copy(
+        updateUiState {
+            copy(
             screen = if (uiState.config != null) uiState.screen else MainScreenRoute.Scan,
             status = "Waiting for QR scan...",
             error = null,
             sessionState = SessionConnectionState.IDLE,
         )
+        }
     }
 
     fun onQrParsed(config: SshQrConfig) {
         Log.d(TAG, "onQrParsed: ${config.username}@${config.host}:${config.port}")
         savedConfigStore.save(config)
-        uiState = uiState.copy(
+        updateUiState {
+            copy(
             screen = MainScreenRoute.Menu,
             config = config,
             status = "Connection profile loaded",
@@ -134,63 +146,76 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             vpnTunnelName = null,
             pendingAutoConnect = false,
         )
+        }
     }
 
     fun onQrRejected(message: String) {
         Log.e(TAG, "onQrRejected: $message")
-        uiState = uiState.copy(
+        updateUiState {
+            copy(
             screen = MainScreenRoute.Scan,
             status = "QR rejected",
             error = message,
             sessionState = SessionConnectionState.FAILED,
         )
+        }
     }
 
     fun onScanCancelled() {
         Log.d(TAG, "onScanCancelled")
-        uiState = uiState.copy(
+        updateUiState {
+            copy(
             screen = if (uiState.config != null) uiState.screen else MainScreenRoute.Scan,
             status = "Scan cancelled",
             sessionState = SessionConnectionState.IDLE,
         )
+        }
     }
 
     fun onScannerError(message: String) {
         Log.e(TAG, "onScannerError: $message")
-        uiState = uiState.copy(
+        updateUiState {
+            copy(
             screen = MainScreenRoute.Scan,
             status = "Scanner error",
             error = message,
             sessionState = SessionConnectionState.FAILED,
         )
+        }
     }
 
     fun onVpnPermissionRequired(config: SshQrConfig) {
         Log.d(TAG, "onVpnPermissionRequired")
         pendingVpnConfig = config
-        uiState = uiState.copy(
+        updateUiState {
+            copy(
             screen = MainScreenRoute.Menu,
             config = config,
             status = "WireGuard permission required",
             sessionState = SessionConnectionState.CONNECTING,
             error = null,
         )
+        }
     }
 
     fun onVpnPermissionDenied() {
         Log.e(TAG, "onVpnPermissionDenied")
         pendingVpnConfig = null
-        uiState = uiState.copy(
+        updateUiState {
+            copy(
             screen = MainScreenRoute.Menu,
             status = "WireGuard permission denied",
             sessionState = SessionConnectionState.FAILED,
             error = "WireGuard permission is required.",
+            vpnTunnelName = null,
         )
+        }
     }
 
     fun connectWithTransport(config: SshQrConfig) {
         Log.d(TAG, "connectWithTransport: start")
-        uiState = uiState.copy(
+        updateUiState {
+            copy(
             screen = MainScreenRoute.Menu,
             config = config,
             status = "Preparing transport",
@@ -198,6 +223,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             error = null,
             pendingAutoConnect = false,
         )
+        }
         viewModelScope.launch {
             val tunnelResult = runCatching {
                 wireGuardTunnelManager.ensureTunnelUp(config)
@@ -205,7 +231,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             tunnelResult.onSuccess { sessionInfo ->
                 Log.d(TAG, "connectWithTransport: wireguard ok reused=${sessionInfo?.reused} tunnel=${sessionInfo?.tunnelName}")
-                uiState = uiState.copy(
+                updateUiState {
+                    copy(
                     screen = MainScreenRoute.Menu,
                     config = config,
                     status = sessionInfo?.let {
@@ -219,15 +246,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     error = null,
                     vpnTunnelName = sessionInfo?.tunnelName,
                 )
+                }
                 terminalController.connect(config)
             }.onFailure { failure ->
                 Log.e(TAG, "connectWithTransport: wireguard failed", failure)
-                uiState = uiState.copy(
+                updateUiState {
+                    copy(
                     config = config,
                     status = "WireGuard failed",
                     sessionState = SessionConnectionState.FAILED,
                     error = failure.toWireGuardMessage(),
+                    vpnTunnelName = null,
                 )
+                }
             }
         }
     }
@@ -235,50 +266,52 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun openTerminal() {
         Log.d(TAG, "openTerminal")
         if (uiState.config == null) return
-        uiState = uiState.copy(screen = MainScreenRoute.Session)
+        updateUiState { copy(screen = MainScreenRoute.Session) }
     }
 
     fun showSettings() {
         Log.d(TAG, "showSettings")
         if (uiState.config == null) return
-        uiState = uiState.copy(screen = MainScreenRoute.Settings)
+        updateUiState { copy(screen = MainScreenRoute.Settings) }
     }
 
     fun openFiles() {
         Log.d(TAG, "openFiles")
         if (uiState.config == null) return
-        uiState = uiState.copy(
-            screen = MainScreenRoute.Files,
-            files = uiState.files.copy(
+        updateUiState {
+            copy(
+                screen = MainScreenRoute.Files,
+                files = files.copy(
                 connectionState = SessionConnectionState.CONNECTING,
                 reconnectAttempt = 0,
                 error = null,
             ),
-        )
+            )
+        }
         refreshFiles()
     }
 
     fun refreshFiles(path: String = uiState.files.currentPath) {
         val config = uiState.config ?: return
         val targetPath = RemotePathUtils.clampToRoot(path, uiState.files.rootPath)
-        uiState = uiState.copy(
-            files = uiState.files.copy(
+        updateFilesState {
+            copy(
                 currentPath = targetPath,
                 isLoading = true,
                 error = null,
                 status = "Loading $targetPath",
-                connectionState = if (uiState.files.connectionState == SessionConnectionState.CONNECTED) {
+                connectionState = if (connectionState == SessionConnectionState.CONNECTED) {
                     SessionConnectionState.CONNECTED
                 } else {
                     SessionConnectionState.CONNECTING
                 },
                 reconnectAttempt = 0,
-            ),
-        )
+            )
+        }
         viewModelScope.launch(Dispatchers.IO) {
             listDirectoryWithReconnect(config, targetPath).onSuccess { entries ->
-                uiState = uiState.copy(
-                    files = uiState.files.copy(
+                updateFilesState {
+                    copy(
                         currentPath = targetPath,
                         entries = entries,
                         isLoading = false,
@@ -286,12 +319,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         status = "${entries.size} item(s)",
                         connectionState = SessionConnectionState.CONNECTED,
                         reconnectAttempt = 0,
-                    ),
-                )
+                    )
+                }
             }.onFailure { failure ->
                 Log.e(TAG, "refreshFiles failed", failure)
-                uiState = uiState.copy(
-                    files = uiState.files.copy(
+                updateFilesState {
+                    copy(
                         currentPath = targetPath,
                         entries = emptyList(),
                         isLoading = false,
@@ -299,8 +332,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         status = null,
                         connectionState = SessionConnectionState.FAILED,
                         reconnectAttempt = 0,
-                    ),
-                )
+                    )
+                }
             }
         }
     }
@@ -324,7 +357,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         runFileOperation(
-            config = config,
             loadingStatus = "Creating folder",
             successStatus = "Folder created",
         ) {
@@ -341,7 +373,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         runFileOperation(
-            config = config,
             loadingStatus = "Creating file",
             successStatus = "File created",
         ) {
@@ -358,7 +389,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         runFileOperation(
-            config = config,
             loadingStatus = "Renaming ${entry.name}",
             successStatus = "Renamed to $newName",
         ) {
@@ -369,7 +399,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun deleteFile(entry: RemoteFileEntry) {
         val config = uiState.config ?: return
         runFileOperation(
-            config = config,
             loadingStatus = "Deleting ${entry.name}",
             successStatus = "Deleted ${entry.name}",
         ) {
@@ -386,7 +415,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         runFileOperation(
-            config = config,
             loadingStatus = "Uploading $displayName",
             successStatus = "Uploaded $displayName",
         ) {
@@ -401,7 +429,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         runFileOperation(
-            config = config,
             loadingStatus = "Downloading ${entry.name}",
             successStatus = "Downloaded ${entry.name}",
             refreshAfterSuccess = false,
@@ -413,15 +440,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun showMenu() {
         Log.d(TAG, "showMenu")
         if (uiState.config == null) {
-            uiState = uiState.copy(screen = MainScreenRoute.Scan)
+            updateUiState { copy(screen = MainScreenRoute.Scan) }
             return
         }
-        uiState = uiState.copy(screen = MainScreenRoute.Menu)
+        updateUiState { copy(screen = MainScreenRoute.Menu) }
     }
 
     fun consumePendingAutoConnect() {
         if (!uiState.pendingAutoConnect) return
-        uiState = uiState.copy(pendingAutoConnect = false)
+        updateUiState { copy(pendingAutoConnect = false) }
     }
 
     fun resetToScan() {
@@ -438,7 +465,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private fun restoreSavedConfig() {
         val config = savedConfigStore.load() ?: return
         Log.d(TAG, "restoreSavedConfig: ${config.username}@${config.host}:${config.port}")
-        uiState = uiState.copy(
+        updateUiState {
+            copy(
             screen = MainScreenRoute.Menu,
             config = config,
             status = "Restored saved profile",
@@ -447,6 +475,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             vpnTunnelName = null,
             pendingAutoConnect = true,
         )
+        }
     }
 
     override fun onCleared() {
@@ -458,37 +487,36 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun runFileOperation(
-        config: SshQrConfig,
         loadingStatus: String,
         successStatus: String,
         refreshAfterSuccess: Boolean = true,
         block: suspend () -> Unit,
     ) {
-        uiState = uiState.copy(
-            files = uiState.files.copy(
+        updateFilesState {
+            copy(
                 isLoading = true,
                 error = null,
                 status = loadingStatus,
-                connectionState = if (uiState.files.connectionState == SessionConnectionState.FAILED) {
+                connectionState = if (connectionState == SessionConnectionState.FAILED) {
                     SessionConnectionState.CONNECTING
                 } else {
-                    uiState.files.connectionState
+                    connectionState
                 },
-            ),
-        )
+            )
+        }
         viewModelScope.launch(Dispatchers.IO) {
             runCatching {
                 block()
             }.onSuccess {
-                uiState = uiState.copy(
-                    files = uiState.files.copy(
+                updateFilesState {
+                    copy(
                         isLoading = false,
                         error = null,
                         status = successStatus,
                         connectionState = SessionConnectionState.CONNECTED,
                         reconnectAttempt = 0,
-                    ),
-                )
+                    )
+                }
                 if (refreshAfterSuccess) {
                     refreshFiles(uiState.files.currentPath)
                 }
@@ -500,14 +528,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun setFilesError(message: String) {
-        uiState = uiState.copy(
-            files = uiState.files.copy(
+        updateFilesState {
+            copy(
                 isLoading = false,
                 error = message,
                 status = null,
                 connectionState = SessionConnectionState.FAILED,
-            ),
-        )
+            )
+        }
     }
 
     private suspend fun listDirectoryWithReconnect(
@@ -528,15 +556,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             val nextAttempt = attempt + 1
-            uiState = uiState.copy(
-                files = uiState.files.copy(
+            updateFilesState {
+                copy(
                     isLoading = true,
                     error = null,
                     status = "Reconnecting... ($nextAttempt/$FILES_MAX_RECONNECT_ATTEMPTS)",
                     connectionState = SessionConnectionState.RECONNECTING,
                     reconnectAttempt = nextAttempt,
-                ),
-            )
+                )
+            }
             runCatching {
                 remoteFilesRepository.reconnect(config)
             }.onFailure { reconnectFailure ->
@@ -545,6 +573,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         return Result.failure(IllegalStateException("Unable to load files."))
+    }
+
+    private inline fun updateUiState(transform: MainUiState.() -> MainUiState) {
+        uiState = uiState.transform()
+    }
+
+    private inline fun updateFilesState(transform: FilesUiState.() -> FilesUiState) {
+        updateUiState {
+            copy(files = files.transform())
+        }
     }
 
     companion object {
