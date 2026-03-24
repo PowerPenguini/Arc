@@ -87,6 +87,45 @@ class TerminalTouchPolicyTest {
     }
 
     @Test
+    fun `quick directional swipe can trigger flick hold`() {
+        assertTrue(
+            TerminalTouchPolicy.shouldTriggerFlickHold(
+                deltaX = 0f,
+                deltaY = -120f,
+                topRow = 0,
+                gestureDurationMs = 180L,
+                maxFlickDurationMs = 250L,
+            ),
+        )
+    }
+
+    @Test
+    fun `slow swipe does not trigger flick hold`() {
+        assertFalse(
+            TerminalTouchPolicy.shouldTriggerFlickHold(
+                deltaX = 0f,
+                deltaY = -120f,
+                topRow = 0,
+                gestureDurationMs = 320L,
+                maxFlickDurationMs = 250L,
+            ),
+        )
+    }
+
+    @Test
+    fun `short quick move does not trigger flick hold`() {
+        assertFalse(
+            TerminalTouchPolicy.shouldTriggerFlickHold(
+                deltaX = 40f,
+                deltaY = 0f,
+                topRow = 0,
+                gestureDurationMs = 100L,
+                maxFlickDurationMs = 250L,
+            ),
+        )
+    }
+
+    @Test
     fun `active arrow gesture consumes move and up`() {
         assertTrue(
             TerminalTouchPolicy.shouldConsumeEvent(

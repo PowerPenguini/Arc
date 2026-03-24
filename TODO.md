@@ -1,0 +1,4 @@
+- tap to enter
+- ticking on flick hold
+- pasting
+- text selection and copying

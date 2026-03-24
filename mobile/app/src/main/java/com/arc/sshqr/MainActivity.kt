@@ -19,10 +19,6 @@ import androidx.core.view.WindowInsetsControllerCompat
 import com.arc.sshqr.qr.SshQrConfig
 import com.arc.sshqr.qr.SshQrParser
 import com.arc.sshqr.ui.theme.ArcSshTheme
-import com.google.mlkit.vision.barcode.common.Barcode
-import com.google.mlkit.vision.codescanner.GmsBarcodeScanner
-import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
-import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
 
 class MainActivity : ComponentActivity() {
 
@@ -39,14 +35,6 @@ class MainActivity : ComponentActivity() {
                 isEnabled = true
             }
         }
-
-    private val scanner: GmsBarcodeScanner by lazy {
-        val options = GmsBarcodeScannerOptions.Builder()
-            .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
-            .enableAutoZoom()
-            .build()
-        GmsBarcodeScanning.getClient(this, options)
-    }
 
     private val vpnPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
@@ -78,7 +66,10 @@ class MainActivity : ComponentActivity() {
                     MainScreen(
                         state = viewModel.uiState,
                         terminalController = viewModel.terminalController,
-                        onScanClick = ::launchScanner,
+                        onScanStarted = viewModel::onScanStarted,
+                        onScanCancelled = viewModel::onScanCancelled,
+                        onScanError = viewModel::onScannerError,
+                        onQrPayloadScanned = ::handleQrPayload,
                         onAutoConnect = { config ->
                             viewModel.consumePendingAutoConnect()
                             startConnection(config)
@@ -116,27 +107,14 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun launchScanner() {
-        Log.d(TAG, "launchScanner")
-        viewModel.onScanStarted()
-
-        scanner.startScan()
-            .addOnSuccessListener { barcode ->
-                Log.d(TAG, "scanner success format=${barcode.format} rawLength=${barcode.rawValue?.length ?: 0}")
-                val payload = barcode.rawValue.orEmpty()
-                SshQrParser.parse(payload).onSuccess { config ->
-                    viewModel.onQrParsed(config)
-                    startConnection(config)
-                }.onFailure { failure ->
-                    viewModel.onQrRejected(failure.message ?: "QR payload is invalid.")
-                }
-            }
-            .addOnCanceledListener {
-                viewModel.onScanCancelled()
-            }
-            .addOnFailureListener { error ->
-                viewModel.onScannerError(error.message ?: "Unable to read QR code.")
-            }
+    private fun handleQrPayload(payload: String) {
+        Log.d(TAG, "handleQrPayload rawLength=${payload.length}")
+        SshQrParser.parse(payload).onSuccess { config ->
+            viewModel.onQrParsed(config)
+            startConnection(config)
+        }.onFailure { failure ->
+            viewModel.onQrRejected(failure.message ?: "QR payload is invalid.")
+        }
     }
 
     private fun startConnection(config: SshQrConfig) {

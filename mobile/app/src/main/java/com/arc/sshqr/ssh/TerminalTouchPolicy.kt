@@ -39,6 +39,23 @@ internal object TerminalTouchPolicy {
         return primary >= secondary * SWIPE_ARROW_DIRECTION_BIAS
     }
 
+    fun shouldTriggerFlickHold(
+        deltaX: Float,
+        deltaY: Float,
+        topRow: Int,
+        gestureDurationMs: Long,
+        maxFlickDurationMs: Long,
+    ): Boolean {
+        if (gestureDurationMs > maxFlickDurationMs) {
+            return false
+        }
+        return shouldStartArrowGesture(
+            deltaX = deltaX,
+            deltaY = deltaY,
+            topRow = topRow,
+        )
+    }
+
     fun shouldStartTwoFingerScroll(
         totalDeltaX1: Float,
         totalDeltaY1: Float,

@@ -18,14 +18,17 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Delete
@@ -36,7 +39,10 @@ import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -45,6 +51,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -105,7 +112,10 @@ internal fun hasActiveSessionDetails(
 fun MainScreen(
     state: MainUiState,
     terminalController: SshTerminalController,
-    onScanClick: () -> Unit,
+    onScanStarted: () -> Unit,
+    onScanCancelled: () -> Unit,
+    onScanError: (String) -> Unit,
+    onQrPayloadScanned: (String) -> Unit,
     onAutoConnect: (SshQrConfig) -> Unit,
     onTerminalClick: () -> Unit,
     onFilesClick: () -> Unit,
@@ -154,7 +164,13 @@ fun MainScreen(
             .background(Color.Black),
     ) {
         when (state.screen) {
-            MainScreenRoute.Scan -> ScanView(state = state, onScanClick = onScanClick)
+            MainScreenRoute.Scan -> ScanView(
+                state = state,
+                onScanStarted = onScanStarted,
+                onScanCancelled = onScanCancelled,
+                onScanError = onScanError,
+                onQrPayloadScanned = onQrPayloadScanned,
+            )
             MainScreenRoute.Menu -> MenuView(
                 state = state,
                 onTerminalClick = onTerminalClick,
@@ -192,12 +208,30 @@ fun MainScreen(
 @Composable
 private fun ScanView(
     state: MainUiState,
-    onScanClick: () -> Unit,
+    onScanStarted: () -> Unit,
+    onScanCancelled: () -> Unit,
+    onScanError: (String) -> Unit,
+    onQrPayloadScanned: (String) -> Unit,
 ) {
+    var scannerActive by rememberSaveable { mutableStateOf(false) }
+    var pasteDialogVisible by rememberSaveable { mutableStateOf(false) }
+    var manualPayload by rememberSaveable { mutableStateOf("") }
+
+    BackHandler(enabled = scannerActive || pasteDialogVisible) {
+        when {
+            pasteDialogVisible -> pasteDialogVisible = false
+            scannerActive -> {
+                scannerActive = false
+                onScanCancelled()
+            }
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
+            .navigationBarsPadding()
             .padding(20.dp),
     ) {
         state.error?.let {
@@ -210,35 +244,171 @@ private fun ScanView(
             )
         }
 
-        Column(
-            modifier = Modifier.align(Alignment.Center),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Text(
-                text = "ARC",
-                style = MaterialTheme.typography.headlineLarge,
-                fontFamily = ArcTerminalFontFamily,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Text(
-                text = "Scan QR to connect to the ARC server.",
-                modifier = Modifier.fillMaxWidth(),
-                style = MaterialTheme.typography.bodyLarge,
-                fontFamily = ArcTerminalFontFamily,
-                color = MaterialTheme.colorScheme.onSurface,
-                textAlign = TextAlign.Center,
-            )
-            Button(onClick = onScanClick, shape = SharpShape) {
-                Icon(
-                    imageVector = Icons.Outlined.QrCodeScanner,
-                    contentDescription = null,
-                    modifier = Modifier.padding(end = 8.dp),
+        if (scannerActive) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(top = 28.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(
+                    text = "ARC",
+                    style = MaterialTheme.typography.headlineLarge,
+                    fontFamily = ArcTerminalFontFamily,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
                 )
-                Text("Scan QR", fontFamily = ArcTerminalFontFamily)
+                Text(
+                    text = "Scan QR to connect to the ARC server.",
+                    modifier = Modifier.fillMaxWidth(),
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontFamily = ArcTerminalFontFamily,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    textAlign = TextAlign.Center,
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(420.dp)
+                        .background(Color(0xFF0B0F10))
+                        .clip(SharpShape)
+                        .border(1.dp, Color(0xFF1A2326)),
+                ) {
+                    QrScannerView(
+                        active = scannerActive,
+                        onCameraAccessDenied = {
+                            scannerActive = false
+                            onScanError("Camera permission denied.")
+                        },
+                        onPayloadScanned = { payload ->
+                            scannerActive = false
+                            onQrPayloadScanned(payload)
+                        },
+                        onScannerError = { message ->
+                            scannerActive = false
+                            onScanError(message)
+                        },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Button(
+                        onClick = {
+                            scannerActive = false
+                            onScanCancelled()
+                        },
+                        shape = SharpShape,
+                    ) {
+                        Text("Stop scan", fontFamily = ArcTerminalFontFamily)
+                    }
+                }
+                Button(
+                    onClick = {
+                        scannerActive = false
+                        pasteDialogVisible = true
+                    },
+                    shape = SharpShape,
+                ) {
+                    Text("Paste code", fontFamily = ArcTerminalFontFamily)
+                }
+            }
+        } else {
+            Column(
+                modifier = Modifier.align(Alignment.Center),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(
+                    text = "ARC",
+                    style = MaterialTheme.typography.headlineLarge,
+                    fontFamily = ArcTerminalFontFamily,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text = "Scan QR to connect to the ARC server.",
+                    modifier = Modifier.fillMaxWidth(),
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontFamily = ArcTerminalFontFamily,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    textAlign = TextAlign.Center,
+                )
+                Button(
+                    onClick = {
+                        onScanStarted()
+                        scannerActive = true
+                    },
+                    shape = SharpShape,
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.QrCodeScanner,
+                        contentDescription = null,
+                        modifier = Modifier.padding(end = 8.dp),
+                    )
+                    Text("Scan QR", fontFamily = ArcTerminalFontFamily)
+                }
+                Button(
+                    onClick = {
+                        onScanStarted()
+                        pasteDialogVisible = true
+                    },
+                    shape = SharpShape,
+                ) {
+                    Text("Paste QR payload", fontFamily = ArcTerminalFontFamily)
+                }
             }
         }
+    }
+
+    if (pasteDialogVisible) {
+        AlertDialog(
+            onDismissRequest = { pasteDialogVisible = false },
+            containerColor = Color(0xFF16191F),
+            title = {
+                Text(
+                    text = "Paste QR payload",
+                    fontFamily = ArcTerminalFontFamily,
+                    color = Color(0xFFD8DADF),
+                )
+            },
+            text = {
+                OutlinedTextField(
+                    value = manualPayload,
+                    onValueChange = { manualPayload = it },
+                    minLines = 6,
+                    textStyle = MaterialTheme.typography.bodyMedium.copy(
+                        fontFamily = ArcTerminalFontFamily,
+                        color = Color(0xFFD8DADF),
+                    ),
+                    label = {
+                        Text("JSON payload", fontFamily = ArcTerminalFontFamily)
+                    },
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pasteDialogVisible = false
+                        onQrPayloadScanned(manualPayload)
+                        manualPayload = ""
+                    },
+                    enabled = manualPayload.isNotBlank(),
+                ) {
+                    Text("Connect", fontFamily = ArcTerminalFontFamily, color = ArcTerminalAccent)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pasteDialogVisible = false }) {
+                    Text("Cancel", fontFamily = ArcTerminalFontFamily, color = Color(0xFFD8DADF))
+                }
+            },
+        )
     }
 }
 

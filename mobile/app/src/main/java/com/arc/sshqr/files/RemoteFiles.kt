@@ -98,14 +98,21 @@ object RemotePathUtils {
 
     private fun buildNormalized(rootSegments: List<String>, targetSegments: List<String>): String {
         val stack = mutableListOf<String>()
+        var escapedRoot = false
         for (segment in targetSegments) {
             if (segment == "..") {
                 if (stack.size > rootSegments.size) {
                     stack.removeAt(stack.lastIndex)
+                } else {
+                    escapedRoot = true
+                    break
                 }
             } else {
                 stack += segment
             }
+        }
+        if (escapedRoot) {
+            return "/" + rootSegments.joinToString("/")
         }
         if (stack.size < rootSegments.size || stack.take(rootSegments.size) != rootSegments) {
             return "/" + rootSegments.joinToString("/")

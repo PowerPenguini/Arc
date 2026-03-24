@@ -25,7 +25,6 @@ import com.termux.view.TerminalViewClient
 import java.io.Closeable
 import java.io.EOFException
 import java.io.IOException
-import java.io.InterruptedIOException
 import java.io.OutputStream
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.atomic.AtomicBoolean
@@ -40,8 +39,6 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import net.schmizz.sshj.connection.channel.direct.Session
 import net.schmizz.sshj.connection.channel.direct.SessionChannel
-import net.schmizz.sshj.transport.TransportException
-import net.schmizz.sshj.userauth.UserAuthException
 
 class SshTerminalController(
     private val appContext: Context,
@@ -355,7 +352,12 @@ class SshTerminalController(
             )
         } catch (ioe: IOException) {
             handleUnexpectedDisconnect(
-                reason = classifyDisconnect(ioe, fallback = "SSH stream failure."),
+                reason = classifyDisconnect(
+                    throwable = ioe,
+                    fallback = "SSH stream failure.",
+                    activeConfig = activeConfig,
+                    transportDisconnectMessage = transportDisconnectMessage,
+                ),
                 cancelReadJob = false,
             )
         }
@@ -364,7 +366,7 @@ class SshTerminalController(
     private fun handleConnectionFailure(throwable: Throwable) {
         Log.e(TAG, "SSH connection failed", throwable)
         connected.set(false)
-        val message = describeConnectionFailure(throwable)
+        val message = describeConnectionFailure(throwable, activeConfig)
         updateSessionState(SessionConnectionState.FAILED)
         dispatchCallback {
             callbacks.onConnectionFailed(message)
@@ -375,59 +377,6 @@ class SshTerminalController(
     private fun dispatchCallback(block: suspend () -> Unit) {
         scope.launch(Dispatchers.Main.immediate) {
             block()
-        }
-    }
-
-    private fun describeConnectionFailure(throwable: Throwable): String {
-        val authDetails = describeAuthFailure(throwable)
-        if (authDetails != null) {
-            return authDetails
-        }
-
-        return throwable.message ?: "Unable to connect over SSH."
-    }
-
-    private fun describeAuthFailure(throwable: Throwable): String? {
-        val authThrowable = throwable.causalChain().firstOrNull { it is UserAuthException }
-        val authMessage = authThrowable?.message ?: throwable.causalChain()
-            .mapNotNull { it.message }
-            .firstOrNull { it.contains("auth", ignoreCase = true) }
-
-        if (authThrowable == null && authMessage?.contains("exhausted available auth methods", ignoreCase = true) != true) {
-            return null
-        }
-
-        val methods = extractBracketedList(authMessage).orEmpty()
-        val methodsSuffix = if (methods.isNotEmpty()) {
-            " Serwer oferuje: $methods."
-        } else {
-            ""
-        }
-        val passphraseHint = activeConfig?.passphrase?.takeIf { it.isNotBlank() }?.let {
-            ""
-        } ?: " Jeśli klucz prywatny jest zaszyfrowany, dodaj poprawne hasło do klucza."
-
-        return buildString {
-            append("SSH auth failed. Serwer odrzucił logowanie kluczem publicznym dla użytkownika ${activeConfig?.username.orEmpty()}.")
-            append(methodsSuffix)
-            append(" Sprawdź username, zgodność klucza z authorized_keys i to, czy PubkeyAuthentication jest włączone na serwerze.")
-            append(passphraseHint)
-        }.trim()
-    }
-
-    private fun extractBracketedList(message: String?): String? {
-        if (message.isNullOrBlank()) {
-            return null
-        }
-        val match = Regex("\\[(.*?)]").find(message) ?: return null
-        return match.groupValues.getOrNull(1)?.takeIf { it.isNotBlank() }
-    }
-
-    private fun Throwable.causalChain(): Sequence<Throwable> = sequence {
-        var current: Throwable? = this@causalChain
-        while (current != null) {
-            yield(current)
-            current = current.cause
         }
     }
 
@@ -495,7 +444,12 @@ class SshTerminalController(
             }
             failure ?: continue
             handleUnexpectedDisconnect(
-                reason = classifyDisconnect(failure, fallback = "SSH write failed."),
+                reason = classifyDisconnect(
+                    throwable = failure,
+                    fallback = "SSH write failed.",
+                    activeConfig = activeConfig,
+                    transportDisconnectMessage = transportDisconnectMessage,
+                ),
                 cancelReadJob = true,
             )
         }
@@ -969,6 +923,32 @@ class SshTerminalController(
                     return true
                 }
                 MotionEvent.ACTION_MOVE -> {
+                    if (!activeArrowGesture) {
+                        val gestureDurationMs = event.eventTime - touchStartTimeMs
+                        val flickKeyCode =
+                            if (
+                                TerminalTouchPolicy.shouldTriggerFlickHold(
+                                    deltaX = deltaX,
+                                    deltaY = deltaY,
+                                    topRow = view.topRow,
+                                    gestureDurationMs = gestureDurationMs,
+                                    maxFlickDurationMs = ONE_FINGER_FLICK_MAX_DURATION_MS,
+                                )
+                            ) {
+                                TerminalTouchPolicy.resolveArrowKeyCode(deltaX, deltaY)
+                            } else {
+                                null
+                            }
+                        if (flickKeyCode != null) {
+                            activeArrowKeyCode = flickKeyCode
+                            activeArrowGesture = true
+                            logTouchDebug(
+                                "flickHold start key=$flickKeyCode dx=$deltaX dy=$deltaY duration=$gestureDurationMs",
+                            )
+                            sendGestureArrowKey(flickKeyCode, requestFocus = false)
+                            startRepeatingArrowKey(flickKeyCode)
+                        }
+                    }
                     return true
                 }
                 MotionEvent.ACTION_UP,
@@ -985,9 +965,15 @@ class SshTerminalController(
                     val isTap = event.actionMasked == MotionEvent.ACTION_UP && movedDistance <= TAP_SLOP_PX
                     val flickKeyCode =
                         if (
+                            !consumedByArrowGesture &&
                             event.actionMasked == MotionEvent.ACTION_UP &&
-                            gestureDurationMs <= ONE_FINGER_FLICK_MAX_DURATION_MS &&
-                            TerminalTouchPolicy.shouldStartArrowGesture(deltaX, deltaY, view.topRow)
+                            TerminalTouchPolicy.shouldTriggerFlickHold(
+                                deltaX = deltaX,
+                                deltaY = deltaY,
+                                topRow = view.topRow,
+                                gestureDurationMs = gestureDurationMs,
+                                maxFlickDurationMs = ONE_FINGER_FLICK_MAX_DURATION_MS,
+                            )
                         ) {
                             TerminalTouchPolicy.resolveArrowKeyCode(deltaX, deltaY)
                         } else {
@@ -1456,7 +1442,12 @@ class SshTerminalController(
     }
 
     private fun handleReconnectFailure(throwable: Throwable) {
-        val reason = classifyDisconnect(throwable, fallback = "SSH reconnect failed.")
+        val reason = classifyDisconnect(
+            throwable = throwable,
+            fallback = "SSH reconnect failed.",
+            activeConfig = activeConfig,
+            transportDisconnectMessage = transportDisconnectMessage,
+        )
         Log.w(TAG, "SSH reconnect failed: ${reason.userMessage}", throwable)
         scope.launch(Dispatchers.IO) {
             cleanupConnection(cancelReadJob = true)
@@ -1585,74 +1576,6 @@ class SshTerminalController(
         }
     }
 
-    private fun classifyDisconnect(throwable: Throwable, fallback: String): DisconnectReason {
-        val authDetails = describeAuthFailure(throwable)
-        if (authDetails != null) {
-            return DisconnectReason(
-                userMessage = authDetails,
-                recoverable = false,
-                finalState = SessionConnectionState.FAILED,
-            )
-        }
-
-        val chain = throwable.causalChain().toList()
-        val message = chain.mapNotNull { it.message }.firstOrNull { it.isNotBlank() }
-            ?: transportDisconnectMessage
-            ?: fallback
-        val normalized = listOfNotNull(message, transportDisconnectMessage).joinToString(" ").lowercase()
-        val recoverable = chain.any { it is IOException || it is TransportException } && (
-            normalized.contains("timeout") ||
-                normalized.contains("timed out") ||
-                normalized.contains("connection reset") ||
-                normalized.contains("broken pipe") ||
-                normalized.contains("connection lost") ||
-                normalized.contains("socket closed") ||
-                normalized.contains("network is unreachable") ||
-                normalized.contains("no route to host") ||
-                normalized.contains("software caused connection abort") ||
-                normalized.contains("connection aborted") ||
-                normalized.contains("connection refused") ||
-                normalized.contains("connection closed") ||
-                throwable is InterruptedIOException
-            )
-
-        return DisconnectReason(
-            userMessage = message,
-            recoverable = recoverable,
-            finalState = SessionConnectionState.FAILED,
-        )
-    }
-
-    private fun classifyTransportDisconnect(reason: String, message: String?): DisconnectReason {
-        val transportMessage = buildString {
-            append("SSH transport disconnected")
-            if (reason.isNotBlank()) {
-                append(": ")
-                append(reason)
-            }
-            if (!message.isNullOrBlank()) {
-                append(" - ")
-                append(message)
-            }
-        }
-        val normalized = transportMessage.lowercase()
-        val recoverable =
-            normalized.contains("connection reset") ||
-                normalized.contains("broken pipe") ||
-                normalized.contains("timeout") ||
-                normalized.contains("timed out") ||
-                normalized.contains("socket") ||
-                normalized.contains("abort") ||
-                normalized.contains("connection closed") ||
-                normalized.contains("unknown")
-
-        return DisconnectReason(
-            userMessage = transportMessage,
-            recoverable = recoverable,
-            finalState = SessionConnectionState.FAILED,
-        )
-    }
-
     private fun updateStatus(
         state: SessionConnectionState,
         status: String,
@@ -1669,10 +1592,4 @@ class SshTerminalController(
             callbacks.onSessionStateChanged(state)
         }
     }
-
-    private data class DisconnectReason(
-        val userMessage: String,
-        val recoverable: Boolean,
-        val finalState: SessionConnectionState,
-    )
 }

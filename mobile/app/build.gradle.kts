@@ -89,6 +89,7 @@ android {
 dependencies {
     val composeBom = platform("androidx.compose:compose-bom:2024.10.01")
     val wireguardTunnelVersion = "1.0.20260102"
+    val cameraXVersion = "1.4.1"
 
     implementation(composeBom)
     androidTestImplementation(composeBom)
@@ -106,7 +107,10 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 
     implementation("com.google.mlkit:barcode-scanning:17.3.0")
-    implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
+    implementation("androidx.camera:camera-camera2:$cameraXVersion")
+    implementation("androidx.camera:camera-core:$cameraXVersion")
+    implementation("androidx.camera:camera-lifecycle:$cameraXVersion")
+    implementation("androidx.camera:camera-view:$cameraXVersion")
 
     implementation("com.hierynomus:sshj:0.40.0")
     implementation("com.termux.termux-app:terminal-emulator:0.118.0")
