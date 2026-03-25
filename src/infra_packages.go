@@ -106,7 +106,6 @@ func runWithAPTRetry(run func() (string, error)) (string, error) {
 		if err == nil || !isAPTLockError(err) || attempt == aptLockRetryAttempts {
 			return out, err
 		}
-		fmt.Fprintf(os.Stderr, "APT lock detected, waiting %s before retry %d/%d\n", aptLockRetryDelay, attempt+1, aptLockRetryAttempts)
 		time.Sleep(aptLockRetryDelay)
 	}
 	return out, err

@@ -67,11 +67,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 Log.d(TAG, "onConnected: ${config.username}@${config.host}:${config.port}")
                 updateUiState {
                     copy(
-                    screen = when (uiState.screen) {
-                        MainScreenRoute.Session -> MainScreenRoute.Session
-                        MainScreenRoute.Files -> MainScreenRoute.Files
-                        else -> MainScreenRoute.Menu
-                    },
+                    screen = preferredConnectionScreen(uiState.screen),
                     config = config,
                     status = "Live shell on ${config.host}",
                     sessionState = SessionConnectionState.CONNECTED,
@@ -87,7 +83,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     screen = if (uiState.config != null) MainScreenRoute.Menu else MainScreenRoute.Scan,
                     status = message,
                     sessionState = SessionConnectionState.DISCONNECTED,
-                    vpnTunnelName = null,
                 )
                 }
             }
@@ -100,7 +95,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     status = "SSH failed",
                     sessionState = SessionConnectionState.FAILED,
                     error = message,
-                    vpnTunnelName = null,
                 )
                 }
             }
@@ -189,7 +183,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         pendingVpnConfig = config
         updateUiState {
             copy(
-            screen = MainScreenRoute.Menu,
+            screen = preferredConnectionScreen(uiState.screen),
             config = config,
             status = "WireGuard permission required",
             sessionState = SessionConnectionState.CONNECTING,
@@ -216,7 +210,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         Log.d(TAG, "connectWithTransport: start")
         updateUiState {
             copy(
-            screen = MainScreenRoute.Menu,
+            screen = preferredConnectionScreen(uiState.screen),
             config = config,
             status = "Preparing transport",
             sessionState = SessionConnectionState.CONNECTING,
@@ -233,7 +227,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 Log.d(TAG, "connectWithTransport: wireguard ok reused=${sessionInfo?.reused} tunnel=${sessionInfo?.tunnelName}")
                 updateUiState {
                     copy(
-                    screen = MainScreenRoute.Menu,
+                    screen = preferredConnectionScreen(uiState.screen),
                     config = config,
                     status = sessionInfo?.let {
                         if (it.reused) {
@@ -289,6 +283,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             )
         }
         refreshFiles()
+    }
+
+    fun reconnectTerminal() {
+        val config = uiState.config ?: return
+        Log.d(TAG, "reconnectTerminal")
+        connectWithTransport(config)
     }
 
     fun refreshFiles(path: String = uiState.files.currentPath) {
@@ -590,3 +590,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         private const val FILES_MAX_RECONNECT_ATTEMPTS = 3
     }
 }
+
+internal fun preferredConnectionScreen(currentScreen: MainScreenRoute): MainScreenRoute =
+    when (currentScreen) {
+        MainScreenRoute.Session -> MainScreenRoute.Session
+        MainScreenRoute.Files -> MainScreenRoute.Files
+        else -> MainScreenRoute.Menu
+    }

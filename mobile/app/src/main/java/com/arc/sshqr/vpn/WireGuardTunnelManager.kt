@@ -34,6 +34,7 @@ class WireGuardTunnelManager(
 
     private var currentTunnel: AppTunnel? = null
     private var currentConfig: Config? = null
+    private var currentConfigFingerprint: String? = null
 
     suspend fun ensureTunnelUp(
         config: SshQrConfig,
@@ -41,13 +42,14 @@ class WireGuardTunnelManager(
     ): WireGuardSessionInfo? {
         val rawConfig = config.wireGuardConfig?.takeIf { it.isNotBlank() } ?: return null
         val parsedConfig = parseAndValidateWireGuardConfig(rawConfig)
+        val configFingerprint = fingerprintWireGuardConfig(rawConfig)
         val tunnelName = resolveWireGuardTunnelName(config.wireGuardTunnelName)
 
         return withContext(Dispatchers.IO) {
             stateMutex.withLock {
                 val tunnel = currentTunnel?.takeIf { it.tunnelName == tunnelName } ?: AppTunnel(tunnelName)
                 val reused = tunnel === currentTunnel &&
-                    currentConfig == parsedConfig &&
+                    currentConfigFingerprint == configFingerprint &&
                     runCatching { backend.getState(tunnel) == Tunnel.State.UP }.getOrDefault(false)
 
                 if (forceRestart) {
@@ -55,10 +57,12 @@ class WireGuardTunnelManager(
                     backend.setState(tunnel, Tunnel.State.UP, parsedConfig)
                     currentTunnel = tunnel
                     currentConfig = parsedConfig
+                    currentConfigFingerprint = configFingerprint
                 } else if (!reused) {
                     backend.setState(tunnel, Tunnel.State.UP, parsedConfig)
                     currentTunnel = tunnel
                     currentConfig = parsedConfig
+                    currentConfigFingerprint = configFingerprint
                 }
 
                 waitForHandshakeOrThrow(
@@ -78,6 +82,7 @@ class WireGuardTunnelManager(
         val requestedTunnelName = config?.wireGuardTunnelName?.takeIf { it.isNotBlank() } ?: DEFAULT_TUNNEL_NAME
         val requestedHasWireGuard = !config?.wireGuardConfig.isNullOrBlank()
         val requestedConfig = config?.wireGuardConfig?.takeIf { it.isNotBlank() }?.let(::parseAndValidateWireGuardConfig)
+        val requestedConfigFingerprint = config?.wireGuardConfig?.takeIf { it.isNotBlank() }?.let(::fingerprintWireGuardConfig)
 
         return withContext(Dispatchers.IO) {
             stateMutex.withLock {
@@ -106,7 +111,11 @@ class WireGuardTunnelManager(
                     append(", hasCurrentConfig=")
                     append(currentConfig != null)
                     append(", configMatches=")
-                    append(requestedConfig != null && currentConfig == requestedConfig)
+                    append(
+                        requestedConfig != null &&
+                            currentConfigFingerprint != null &&
+                            currentConfigFingerprint == requestedConfigFingerprint,
+                    )
                     val statsSummary = tunnel?.let {
                         runCatching {
                             summarizeWireGuardStats(backend.getStatistics(it), requestedConfig ?: currentConfig)
@@ -181,6 +190,13 @@ internal fun parseAndValidateWireGuardConfig(rawConfig: String): Config {
 
     return parsedConfig
 }
+
+internal fun fingerprintWireGuardConfig(rawConfig: String): String =
+    rawConfig
+        .lineSequence()
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
+        .joinToString("\n")
 
 internal fun resolveWireGuardTunnelName(rawTunnelName: String?): String {
     val candidate = rawTunnelName?.takeIf { it.isNotBlank() } ?: DEFAULT_TUNNEL_NAME

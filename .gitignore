@@ -28,6 +28,8 @@
 *.out
 coverage.out
 src/arc
+src/embedded/*
+!src/embedded/.gitkeep
 
 # Rust
 clipd/target/

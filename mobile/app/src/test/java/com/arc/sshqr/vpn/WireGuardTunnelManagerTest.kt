@@ -125,4 +125,36 @@ class WireGuardTunnelManagerTest {
         assertTrue(message.contains("no peer handshake completed within 12s"))
         assertTrue(message.contains("tx=128"))
     }
+
+    @Test
+    fun `wireguard config fingerprint ignores formatting-only differences`() {
+        val compact = """
+            [Interface]
+            PrivateKey = test
+            Address = 10.20.0.2/32
+
+            [Peer]
+            PublicKey = peer
+            AllowedIPs = 10.20.0.0/24
+            Endpoint = vpn.example.com:51820
+        """.trimIndent()
+        val spaced = """
+
+            [Interface]
+              PrivateKey = test
+              Address = 10.20.0.2/32
+
+
+            [Peer]
+              PublicKey = peer
+              AllowedIPs = 10.20.0.0/24
+              Endpoint = vpn.example.com:51820
+
+        """.trimIndent()
+
+        assertEquals(
+            fingerprintWireGuardConfig(compact),
+            fingerprintWireGuardConfig(spaced),
+        )
+    }
 }

@@ -77,10 +77,11 @@ class MainActivity : ComponentActivity() {
                         onTerminalClick = {
                             viewModel.openTerminal()
                             viewModel.uiState.config?.takeUnless {
-                                viewModel.uiState.sessionState.isConnecting || viewModel.uiState.sessionState.isConnected
+                                viewModel.terminalController.hasActiveOrPendingSession()
                             }?.let(::startConnection)
                         },
                         onFilesClick = viewModel::openFiles,
+                        onReconnectClick = viewModel::reconnectTerminal,
                         onRefreshFiles = { viewModel.refreshFiles() },
                         onNavigateFilesUp = viewModel::navigateFilesUp,
                         onOpenDirectory = viewModel::openDirectory,

@@ -249,6 +249,9 @@ func execInstallLocalArcPrompt(_ app.SetupStepRequest, wg wgConfig, res *app.Set
 }
 
 func execVerifyArcSSHLogin(req app.SetupStepRequest, wg wgConfig, res *app.SetupStepResult) error {
+	if err := syncLocalKnownHostsForBootstrap(req.Host, req.Addr); err != nil {
+		return err
+	}
 	if err := verifyArcKeyLogin(req.Host, req.Addr); err != nil {
 		return err
 	}
@@ -264,6 +267,9 @@ func execVerifyArcSSHLogin(req app.SetupStepRequest, wg wgConfig, res *app.Setup
 
 func execVerifyTunnelConnectivity(req app.SetupStepRequest, wg wgConfig, res *app.SetupStepResult) error {
 	if err := execInfraStep(req, wg, res); err != nil {
+		return err
+	}
+	if err := syncLocalKnownHostsForArcRemote(); err != nil {
 		return err
 	}
 	if err := syncRemoteArcHelper(req.Addr, req.Host, wg); err != nil {

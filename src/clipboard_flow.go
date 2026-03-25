@@ -4,9 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 
 	"golang.org/x/crypto/ssh"
@@ -262,45 +260,7 @@ func activateLocalClipboardSyncService(execFn localExecFunc) error {
 }
 
 func buildArcClipdBinary() ([]byte, error) {
-	clipdDir, err := localClipdProjectDir()
-	if err != nil {
-		return nil, err
-	}
-	manifestPath := filepath.Join(clipdDir, "Cargo.toml")
-	releasePath := filepath.Join(clipdDir, "target", "release", "arc-clipd")
-
-	var lastErr error
-	for _, cmd := range [][]string{
-		{"cargo", "build", "--manifest-path", manifestPath, "--release", "--offline"},
-		{"cargo", "build", "--manifest-path", manifestPath, "--release"},
-	} {
-		var stderr bytes.Buffer
-		c := exec.Command(cmd[0], cmd[1:]...)
-		c.Stderr = &stderr
-		c.Stdout = &stderr
-		if err := c.Run(); err == nil {
-			return os.ReadFile(releasePath)
-		} else {
-			lastErr = fmt.Errorf("%w (%s)", err, strings.TrimSpace(stderr.String()))
-		}
-	}
-	if lastErr != nil {
-		return nil, fmt.Errorf("build arc-clipd: %w", lastErr)
-	}
-	return nil, fmt.Errorf("build arc-clipd: unknown error")
-}
-
-func localClipdProjectDir() (string, error) {
-	_, filename, _, ok := runtime.Caller(0)
-	if !ok {
-		return "", fmt.Errorf("cannot resolve source path for clipd build")
-	}
-	repoRoot := filepath.Clean(filepath.Join(filepath.Dir(filename), ".."))
-	clipdDir := filepath.Join(repoRoot, "clipd")
-	if _, err := os.Stat(filepath.Join(clipdDir, "Cargo.toml")); err != nil {
-		return "", fmt.Errorf("cannot resolve clipd project at %s: %w", clipdDir, err)
-	}
-	return clipdDir, nil
+	return embeddedArcClipdBinary()
 }
 
 type sshRemoteFileSession struct {

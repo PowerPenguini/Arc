@@ -9,6 +9,7 @@ import android.util.TypedValue
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.inputmethod.InputMethodManager
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -114,6 +115,7 @@ class SshTerminalController(
     private var currentState: SessionConnectionState = SessionConnectionState.IDLE
     private var reconnectAttempt = 0
     private var remoteEscapeLogTail = ""
+    private var selectionModeActive = false
     @Volatile
     private var transportDisconnectMessage: String? = null
     private val debugTouchLogs = (appContext.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
@@ -161,7 +163,6 @@ class SshTerminalController(
             try {
                 disconnectHandled.set(true)
                 cleanupConnection(cancelReadJob = true)
-                appendStatusLine("Scanning complete. Opening SSH session...")
                 updateStatus(
                     SessionConnectionState.CONNECTING,
                     "Connecting to ${config.username}@${config.host}:${config.port}",
@@ -233,6 +234,9 @@ class SshTerminalController(
         focusTerminalInput()
     }
 
+    fun hasActiveOrPendingSession(): Boolean =
+        connected.get() || pendingConnectJob != null || reconnectJob != null
+
     fun terminalFontSizeSp(): Float = terminalFontSizeSp
 
     private fun ensureTerminalSession() {
@@ -250,6 +254,19 @@ class SshTerminalController(
         terminalOutputProxyInstalled = false
         syncTerminalBackgroundPalette()
         installTerminalOutputProxy()
+    }
+
+    private fun replaceTerminalSession() {
+        runCatching { terminalSession?.finishIfRunning() }
+        terminalSession = null
+        terminalOutputProxyInstalled = false
+        ensureTerminalSession()
+        terminalView?.let { view ->
+            view.attachSession(checkNotNull(terminalSession))
+            installTerminalOutputProxy()
+            syncTerminalBackgroundPalette()
+            view.invalidate()
+        }
     }
 
     fun disconnect() {
@@ -300,6 +317,7 @@ class SshTerminalController(
         disconnectHandled.set(true)
         reconnectJob?.cancel()
         stopRepeatingArrowKey()
+        clearSelectionMode()
         pendingConnectJob?.cancel()
         connected.set(false)
         viewportState = TerminalViewportState()
@@ -308,7 +326,6 @@ class SshTerminalController(
         cleanupConnection(cancelReadJob = true)
 
         if (showStatus) {
-            appendStatusLine("Disconnected.")
             updateSessionState(SessionConnectionState.DISCONNECTED)
             dispatchCallback {
                 callbacks.onDisconnected("Disconnected.")
@@ -371,7 +388,6 @@ class SshTerminalController(
         dispatchCallback {
             callbacks.onConnectionFailed(message)
         }
-        appendStatusLine("Connection failed: $message")
     }
 
     private fun dispatchCallback(block: suspend () -> Unit) {
@@ -613,7 +629,14 @@ class SshTerminalController(
 
         override fun onTitleChanged(changedSession: TerminalSession?) = Unit
 
-        override fun onSessionFinished(finishedSession: TerminalSession?) = Unit
+        override fun onSessionFinished(finishedSession: TerminalSession?) {
+            if (finishedSession !== terminalSession) {
+                return
+            }
+            terminalView?.post {
+                replaceTerminalSession()
+            }
+        }
 
         override fun onCopyTextToClipboard(session: TerminalSession?, text: String?) {
             val safeText = text ?: return
@@ -680,6 +703,9 @@ class SshTerminalController(
         override fun onScale(scale: Float): Float = applyTerminalScale(scale)
 
         override fun onSingleTapUp(e: MotionEvent) {
+            if (TerminalSelectionModeLogic.isSelectionActive(selectionModeActive, terminalView?.isSelectingText() == true)) {
+                return
+            }
             focusTerminalInput(showKeyboard = true)
         }
 
@@ -718,14 +744,28 @@ class SshTerminalController(
             return true
         }
 
-        override fun onLongPress(event: MotionEvent?): Boolean = false
+        override fun onLongPress(event: MotionEvent?): Boolean {
+            val safeEvent = event ?: return false
+            val view = terminalView ?: return false
+            enterSelectionMode(view, safeEvent)
+            return true
+        }
 
         override fun onEmulatorSet() {
             updateLastKnownTerminalSize()
             handleTerminalSizeChange(lastColumns, lastRows)
         }
 
-        override fun copyModeChanged(copyMode: Boolean) = Unit
+        override fun copyModeChanged(copyMode: Boolean) {
+            selectionModeActive = copyMode
+            if (copyMode) {
+                resetGestureInteractionState()
+            } else {
+                terminalView?.post {
+                    terminalView?.let(::syncViewportState)
+                }
+            }
+        }
 
         override fun shouldBackButtonBeMappedToEscape(): Boolean = false
 
@@ -870,9 +910,27 @@ class SshTerminalController(
         viewportState = restoredState
     }
 
+    private fun clearSelectionMode() {
+        selectionModeActive = false
+        terminalView?.post {
+            terminalView?.stopTextSelectionMode()
+        }
+    }
+
+    private fun enterSelectionMode(view: TerminalView, event: MotionEvent) {
+        resetGestureInteractionState()
+        selectionModeActive = true
+        view.startTextSelectionMode(event)
+    }
+
+    private fun resetGestureInteractionState() {
+        stopRepeatingArrowKey()
+    }
+
     private inner class TerminalTouchInterceptor(
         private val view: TerminalView,
     ) : View.OnTouchListener {
+        private val longPressTimeoutMs = ViewConfiguration.getLongPressTimeout().toLong()
         private var touchStartX = 0f
         private var touchStartY = 0f
         private var touchStartTimeMs = 0L
@@ -892,12 +950,26 @@ class SshTerminalController(
         private var twoFingerLastX2 = 0f
         private var twoFingerLastFocusY = 0f
         private var twoFingerScrollRemainder = 0f
+        private var longPressTriggered = false
+        private var longPressArmed = false
+        private var longPressDownEvent: MotionEvent? = null
+        private val longPressRunnable =
+            Runnable {
+                val downEvent = longPressDownEvent ?: return@Runnable
+                if (!longPressArmed || isSelectionActive()) {
+                    return@Runnable
+                }
+                longPressTriggered = true
+                suppressNextSingleFingerUp = true
+                enterSelectionMode(view, downEvent)
+            }
+
         override fun onTouch(v: View?, event: MotionEvent): Boolean {
             logTouchDebug(
-                "touch action=${event.actionMasked} pointers=${event.pointerCount} topRow=${view.topRow} selecting=${view.isSelectingText()}",
+                "touch action=${event.actionMasked} pointers=${event.pointerCount} topRow=${view.topRow} selecting=${view.isSelectingText()} selectionModeActive=$selectionModeActive",
             )
-            if (view.isSelectingText()) {
-                resetArrowGesture()
+            if (isSelectionActive()) {
+                resetInteractionState()
                 if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
                     view.post { syncViewportState(view) }
                 }
@@ -906,6 +978,7 @@ class SshTerminalController(
             }
 
             if (event.pointerCount >= 2 || activeTwoFingerScroll) {
+                cancelPendingLongPress()
                 return handleTwoFingerScroll(event)
             }
 
@@ -913,16 +986,21 @@ class SshTerminalController(
             val deltaY = event.y - touchStartY
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
+                    longPressTriggered = false
                     touchStartX = event.x
                     touchStartY = event.y
                     touchStartTimeMs = event.eventTime
                     suppressNextSingleFingerUp = false
                     activeArrowKeyCode = null
                     activeArrowGesture = false
-                    stopRepeatingArrowKey()
+                    resetGestureInteractionState()
+                    armLongPress(event)
                     return true
                 }
                 MotionEvent.ACTION_MOVE -> {
+                    if (!longPressTriggered && movedBeyondTapSlop(deltaX, deltaY)) {
+                        cancelPendingLongPress()
+                    }
                     if (!activeArrowGesture) {
                         val gestureDurationMs = event.eventTime - touchStartTimeMs
                         val flickKeyCode =
@@ -940,6 +1018,7 @@ class SshTerminalController(
                                 null
                             }
                         if (flickKeyCode != null) {
+                            cancelPendingLongPress()
                             activeArrowKeyCode = flickKeyCode
                             activeArrowGesture = true
                             logTouchDebug(
@@ -953,9 +1032,10 @@ class SshTerminalController(
                 }
                 MotionEvent.ACTION_UP,
                 MotionEvent.ACTION_CANCEL -> {
+                    cancelPendingLongPress()
                     if (suppressNextSingleFingerUp) {
                         suppressNextSingleFingerUp = false
-                        resetArrowGesture()
+                        resetInteractionState()
                         view.post { syncViewportState(view) }
                         return true
                     }
@@ -979,7 +1059,7 @@ class SshTerminalController(
                         } else {
                             null
                         }
-                    resetArrowGesture()
+                    resetInteractionState()
                     view.post { syncViewportState(view) }
                     if (flickKeyCode != null) {
                         logTouchDebug("flickGesture key=$flickKeyCode dx=$deltaX dy=$deltaY duration=$gestureDurationMs")
@@ -1010,13 +1090,51 @@ class SshTerminalController(
             )
         }
 
+        private fun isSelectionActive(): Boolean {
+            return TerminalSelectionModeLogic.isSelectionActive(
+                copyModeActive = selectionModeActive,
+                viewSelectingText = view.isSelectingText(),
+            )
+        }
+
+        private fun armLongPress(event: MotionEvent) {
+            cancelPendingLongPress()
+            longPressArmed = true
+            longPressDownEvent = MotionEvent.obtain(event)
+            view.postDelayed(longPressRunnable, longPressTimeoutMs)
+        }
+
+        private fun cancelPendingLongPress() {
+            longPressArmed = false
+            view.removeCallbacks(longPressRunnable)
+            longPressDownEvent?.recycle()
+            longPressDownEvent = null
+        }
+
+        private fun movedBeyondTapSlop(deltaX: Float, deltaY: Float): Boolean {
+            return kotlin.math.hypot(deltaX.toDouble(), deltaY.toDouble()).toFloat() > TAP_SLOP_PX
+        }
+
         private fun resetArrowGesture() {
             activeArrowKeyCode = null
             activeArrowGesture = false
             stopRepeatingArrowKey()
         }
 
+        private fun resetInteractionState() {
+            cancelPendingLongPress()
+            longPressTriggered = false
+            resetArrowGesture()
+            if (activeTwoFingerScroll) {
+                finishTwoFingerScroll()
+            } else {
+                twoFingerScrollRemainder = 0f
+                clearTwoFingerTracking()
+            }
+        }
+
         private fun handleTwoFingerScroll(event: MotionEvent): Boolean {
+            cancelPendingLongPress()
             resetArrowGesture()
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN,
@@ -1379,7 +1497,6 @@ class SshTerminalController(
     ) {
         try {
             awaitTerminalReadyForHandshake()
-            appendStatusLine("Opening shared SSH transport...")
             val ssh = connectionManager.ensureConnected(
                 config = config,
                 forceReconnect = isReconnect,
@@ -1417,10 +1534,8 @@ class SshTerminalController(
                 callbacks.onConnected(config)
             }
             if (isReconnect) {
-                appendStatusLine("Reconnected to ${config.host}")
             } else {
                 appendControlSequence("\u001B[2J\u001B[H")
-                appendStatusLine("Connected to ${config.host}")
             }
 
             readJob = scope.launch(Dispatchers.IO) {
@@ -1529,7 +1644,6 @@ class SshTerminalController(
         reconnectJob = scope.launch(Dispatchers.IO) {
             val reconnectMessage = "Connection lost, retrying... ($attempt/$MAX_RECONNECT_ATTEMPTS)"
             updateStatus(SessionConnectionState.RECONNECTING, reconnectMessage)
-            appendStatusLine(reconnectMessage)
             delay(delayMs)
             if (manualDisconnectRequested.get()) {
                 return@launch
@@ -1562,7 +1676,6 @@ class SshTerminalController(
         reconnectJob?.cancel()
         reconnectJob = null
         updateSessionState(reason.finalState)
-        appendStatusLine(reason.userMessage)
         when (reason.finalState) {
             SessionConnectionState.DISCONNECTED -> dispatchCallback {
                 callbacks.onDisconnected(reason.userMessage)

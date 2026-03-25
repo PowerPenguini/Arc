@@ -34,9 +34,11 @@ import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.QrCodeScanner
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.AlertDialog
@@ -87,26 +89,21 @@ private val TerminalToolbarButtonActiveBackground = Color(0xFF222A18)
 internal fun buildMenuHeaderDetails(
     host: String,
     vpnTunnelName: String?,
-    sessionState: SessionConnectionState,
 ): String {
-    val canShowConnectionDetails = hasActiveSessionDetails(
-        vpnTunnelName = vpnTunnelName,
-        sessionState = sessionState,
-    )
-    if (!canShowConnectionDetails) {
+    if (!hasActiveTunnel(vpnTunnelName)) {
         return "//DISCONNECTED"
     }
     return "@$host / wireguard"
 }
 
-internal fun hasActiveSessionDetails(
+internal fun hasActiveTunnel(
+    vpnTunnelName: String?,
+): Boolean = vpnTunnelName != null
+
+internal fun shouldShowReconnectAction(
     vpnTunnelName: String?,
     sessionState: SessionConnectionState,
-): Boolean = vpnTunnelName != null && (
-    sessionState == SessionConnectionState.CONNECTING ||
-        sessionState == SessionConnectionState.RECONNECTING ||
-        sessionState == SessionConnectionState.CONNECTED
-    )
+): Boolean = !hasActiveTunnel(vpnTunnelName) && !sessionState.isConnecting
 
 @Composable
 fun MainScreen(
@@ -119,6 +116,7 @@ fun MainScreen(
     onAutoConnect: (SshQrConfig) -> Unit,
     onTerminalClick: () -> Unit,
     onFilesClick: () -> Unit,
+    onReconnectClick: () -> Unit,
     onRefreshFiles: () -> Unit,
     onNavigateFilesUp: () -> Unit,
     onOpenDirectory: (RemoteFileEntry) -> Unit,
@@ -175,6 +173,7 @@ fun MainScreen(
                 state = state,
                 onTerminalClick = onTerminalClick,
                 onFilesClick = onFilesClick,
+                onReconnectClick = onReconnectClick,
                 onSettingsClick = onSettingsClick,
             )
             MainScreenRoute.Files -> FilesView(
@@ -417,15 +416,18 @@ private fun MenuView(
     state: MainUiState,
     onTerminalClick: () -> Unit,
     onFilesClick: () -> Unit,
+    onReconnectClick: () -> Unit,
     onSettingsClick: () -> Unit,
 ) {
     state.config ?: return
     val headerDetails = buildMenuHeaderDetails(
         host = state.config.host,
         vpnTunnelName = state.vpnTunnelName,
-        sessionState = state.sessionState,
     )
-    val isConnectionAvailable = hasActiveSessionDetails(
+    val isConnectionAvailable = hasActiveTunnel(
+        vpnTunnelName = state.vpnTunnelName,
+    )
+    val showReconnectAction = shouldShowReconnectAction(
         vpnTunnelName = state.vpnTunnelName,
         sessionState = state.sessionState,
     )
@@ -447,20 +449,54 @@ private fun MenuView(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    text = "ARC",
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontFamily = ArcTerminalFontFamily,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFFD8DADF),
-                )
-                Text(
-                    text = headerDetails,
-                    style = MaterialTheme.typography.bodySmall,
-                    fontFamily = ArcTerminalFontFamily,
-                    fontWeight = FontWeight.Medium,
-                    color = Color(0xFF9EA4AF),
-                )
+                Row(
+                    modifier = Modifier.weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "ARC",
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontFamily = ArcTerminalFontFamily,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFD8DADF),
+                    )
+                    Text(
+                        text = headerDetails,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = ArcTerminalFontFamily,
+                        fontWeight = FontWeight.Medium,
+                        color = Color(0xFF9EA4AF),
+                    )
+                }
+                if (showReconnectAction) {
+                    Button(
+                        onClick = onReconnectClick,
+                        shape = SharpShape,
+                        modifier = Modifier.height(30.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF171C1E),
+                            contentColor = Color(0xFFD8DADF),
+                        ),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                            horizontal = 8.dp,
+                            vertical = 4.dp,
+                        ),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Refresh,
+                            contentDescription = null,
+                            modifier = Modifier
+                                .size(12.dp)
+                                .padding(end = 4.dp),
+                        )
+                        Text(
+                            text = "Reconnect",
+                            fontFamily = ArcTerminalFontFamily,
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                    }
+                }
             }
 
             MenuActionRow(
