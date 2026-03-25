@@ -55,6 +55,7 @@ class SshTerminalController(
         ALT,
         ESC,
         TAB,
+        DELETE,
         UP,
         DOWN,
         LEFT,
@@ -215,6 +216,7 @@ class SshTerminalController(
 
             ToolbarKey.ESC -> sendSpecialSequence("\u001B", focusAfterSend)
             ToolbarKey.TAB -> sendSpecialSequence("\t", focusAfterSend)
+            ToolbarKey.DELETE -> sendSpecialKeyCode(KeyEvent.KEYCODE_FORWARD_DEL, focusAfterSend)
             ToolbarKey.UP -> sendSpecialKeyCode(KeyEvent.KEYCODE_DPAD_UP, focusAfterSend)
             ToolbarKey.DOWN -> sendSpecialKeyCode(KeyEvent.KEYCODE_DPAD_DOWN, focusAfterSend)
             ToolbarKey.LEFT -> sendSpecialKeyCode(KeyEvent.KEYCODE_DPAD_LEFT, focusAfterSend)

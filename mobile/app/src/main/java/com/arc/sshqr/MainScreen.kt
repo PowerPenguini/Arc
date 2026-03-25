@@ -795,6 +795,9 @@ private fun TerminalToolbar(
         TerminalToolbarButton(label = "Tab") {
             controller.sendToolbarKey(SshTerminalController.ToolbarKey.TAB)
         }
+        TerminalToolbarButton(label = "Del") {
+            controller.sendToolbarKey(SshTerminalController.ToolbarKey.DELETE)
+        }
         TerminalToolbarButton(label = "Home") {
             controller.sendToolbarKey(SshTerminalController.ToolbarKey.HOME)
         }
